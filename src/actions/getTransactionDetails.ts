@@ -1,16 +1,14 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { getTransactionDetailsTemplate } from '../templates';
 import { JsonRpcProvider } from 'ethers';
+import { getTransactionDetailsTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
 
 /**
@@ -48,7 +46,7 @@ export const getTransactionDetailsAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('🔍 Handling GET_TRANSACTION_DETAILS action');
 
@@ -58,16 +56,16 @@ export const getTransactionDetailsAction: Action = {
       if (!alchemyApiKey && !zkevmRpcUrl) {
         const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
         logger.error(`[getTransactionDetailsAction] Configuration error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_GET_TRANSACTION_DETAILS_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
         }
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { txDetailsRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_DETAILS', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       let hashInput: any | null = null;
@@ -92,11 +90,19 @@ export const getTransactionDetailsAction: Action = {
       } catch (error) {
         logger.error(
           '[getTransactionDetailsAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error : undefined
+          error instanceof Error ? error.message : String(error)
         );
-        throw new Error(
-          `[getTransactionDetailsAction] Failed to extract transaction hash from input: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMessage = `[getTransactionDetailsAction] Failed to extract transaction hash from input: ${error instanceof Error ? error.message : String(error)}`;
+        if (callback) {
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        }
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { txDetailsRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_DETAILS', error: errorMessage },
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
 
       const txHash = hashInput.transactionHash;
@@ -178,18 +184,17 @@ export const getTransactionDetailsAction: Action = {
 
       // Check if we have at least some data
       if (!transactionData && !receiptData) {
-        const errorMessage = `❌ Failed to retrieve transaction details for hash ${txHash}. Errors: ${errorMessages.join('; ')}`;
-
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_GET_TRANSACTION_DETAILS_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
+        const errorMessage = `Failed to retrieve transaction details for hash ${txHash}. Errors: ${errorMessages.join('; ')}`;
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
         }
-        return errorContent;
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { txDetailsRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_DETAILS', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       // Combine transaction data and receipt into a comprehensive response
@@ -278,31 +283,32 @@ export const getTransactionDetailsAction: Action = {
       responseText += gasEfficiency;
       responseText += `\n\n🔗 Retrieved via ${methodUsed === 'alchemy' ? 'Alchemy API' : 'Direct RPC'}`;
 
-      const responseContent: Content = {
+      if (callback) {
+        await callback({ text: responseText, content: { success: true, hash: txHash } });
+      }
+      return {
+        success: true,
         text: responseText,
-        actions: ['POLYGON_GET_TRANSACTION_DETAILS_ZKEVM'],
+        values: { txDetailsRetrieved: true, hash: txHash },
         data: {
+          actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_DETAILS',
           transactionDetails: combinedData,
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-      return responseContent;
     } catch (error) {
       logger.error('❌ Error in GET_TRANSACTION_DETAILS action:', error);
 
-      const errorContent: Content = {
-        text: `❌ Error getting transaction details: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        actions: ['POLYGON_GET_TRANSACTION_DETAILS_ZKEVM'],
-        data: { error: error instanceof Error ? error.message : 'Unknown error' },
-      };
-
+      const errText = `❌ Error getting transaction details: ${error instanceof Error ? error.message : 'Unknown error'}`;
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errText, content: { success: false, error: errText } });
       }
-      return errorContent;
+      return {
+        success: false,
+        text: errText,
+        values: { txDetailsRetrieved: false, error: true, errorMessage: errText },
+        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_DETAILS', error: errText },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

@@ -1,23 +1,19 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  type HandlerCallback,
+  type ActionResult,
   type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
   logger,
-  ModelType,
-  composePromptFromState,
+  type Memory,
+  type State
 } from '@elizaos/core';
-import { z } from 'zod';
 import {
-  JsonRpcProvider,
-  Wallet,
   Contract,
+  JsonRpcProvider,
   parseEther,
   parseUnits,
-  formatEther,
-  Interface,
+  Wallet
 } from 'ethers';
 import { interactSmartContractTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
@@ -78,7 +74,7 @@ export const interactSmartContractAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[interactSmartContractAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -168,7 +164,7 @@ export const interactSmartContractAction: Action = {
     } catch (error) {
       logger.debug(
         '[interactSmartContractAction] LLM extraction failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
       throw new Error(
         `[interactSmartContractAction] Failed to extract interaction parameters: ${error instanceof Error ? error.message : String(error)}`
@@ -236,19 +232,18 @@ export const interactSmartContractAction: Action = {
           `[interactSmartContractAction] View function call successful. Result: ${result?.toString()}`
         );
 
-        const responseContent: Content = {
-          text: `✅ Smart contract view function called successfully on Polygon zkEVM!
+        const successText = `✅ Smart contract view function called successfully on Polygon zkEVM!\n\n**Contract Address:** \`${interactionParams.contractAddress}\`\n**Method Called:** \`${interactionParams.methodName}\`\n**Arguments:** \`${JSON.stringify(interactionParams.args)}\`\n**Result:** \`${result?.toString()}\`\n**Method Used:** ${methodUsed}\n**Network:** Polygon zkEVM\n\nThis was a read-only function call that doesn't modify blockchain state.`;
 
-**Contract Address:** \`${interactionParams.contractAddress}\`
-**Method Called:** \`${interactionParams.methodName}\`
-**Arguments:** \`${JSON.stringify(interactionParams.args)}\`
-**Result:** \`${result?.toString()}\`
-**Method Used:** ${methodUsed}
-**Network:** Polygon zkEVM
+        if (callback) {
+          await callback({ text: successText, content: { success: true, isReadOnly: true } });
+        }
 
-This was a read-only function call that doesn't modify blockchain state.`,
-          actions: ['POLYGON_INTERACT_SMART_CONTRACT_ZKEVM'],
+        return {
+          success: true,
+          text: successText,
+          values: { contractInteractionSucceeded: true, isReadOnly: true },
           data: {
+            actionName: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT',
             contractAddress: interactionParams.contractAddress,
             methodName: interactionParams.methodName,
             args: interactionParams.args,
@@ -259,12 +254,6 @@ This was a read-only function call that doesn't modify blockchain state.`,
             isReadOnly: true,
           },
         };
-
-        if (callback) {
-          await callback(responseContent);
-        }
-
-        return responseContent;
       }
 
       // For state-changing functions, prepare transaction options
@@ -365,19 +354,18 @@ This was a read-only function call that doesn't modify blockchain state.`,
 
     // Handle result and errors
     if (transactionHash) {
-      const responseContent: Content = {
-        text: `✅ Smart contract interaction successful on Polygon zkEVM!
+      const successText = `✅ Smart contract interaction successful on Polygon zkEVM!\n\n**Contract Address:** \`${interactionParams.contractAddress}\`\n**Method Called:** \`${interactionParams.methodName}\`\n**Arguments:** \`${JSON.stringify(interactionParams.args)}\`\n**Transaction Hash:** \`${transactionHash}\`\n**Method Used:** ${methodUsed}\n**Network:** Polygon zkEVM\n\nThis was a state-changing transaction that has been sent to the network.`;
 
-**Contract Address:** \`${interactionParams.contractAddress}\`
-**Method Called:** \`${interactionParams.methodName}\`
-**Arguments:** \`${JSON.stringify(interactionParams.args)}\`
-**Transaction Hash:** \`${transactionHash}\`
-**Method Used:** ${methodUsed}
-**Network:** Polygon zkEVM
+      if (callback) {
+        await callback({ text: successText, content: { success: true, transactionHash } });
+      }
 
-This was a state-changing transaction that has been sent to the network.`,
-        actions: ['POLYGON_INTERACT_SMART_CONTRACT_ZKEVM'],
+      return {
+        success: true,
+        text: successText,
+        values: { contractInteractionSucceeded: true, transactionHash },
         data: {
+          actionName: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT',
           contractAddress: interactionParams.contractAddress,
           methodName: interactionParams.methodName,
           args: interactionParams.args,
@@ -391,28 +379,22 @@ This was a state-changing transaction that has been sent to the network.`,
           },
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } else {
       // Contract interaction failed
       const errorMessage = `Failed to interact with smart contract on Polygon zkEVM. Errors: ${errorMessages.join('; ')}. Please check your contract address, ABI, method name, and arguments.`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_INTERACT_SMART_CONTRACT_ZKEVM'],
-        data: { error: errorMessage, errors: errorMessages, interactionParams },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
 
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { contractInteractionSucceeded: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT', error: errorMessage, errors: errorMessages, interactionParams },
+        error: new Error(errorMessage),
+      };
     }
   },
 

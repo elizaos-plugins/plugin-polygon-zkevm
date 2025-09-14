@@ -1,13 +1,11 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
 import { checkBlockStatusTemplate } from '../templates';
@@ -81,7 +79,7 @@ export const checkBlockStatusAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('[checkBlockStatusAction] Handler called!');
 
@@ -91,16 +89,16 @@ export const checkBlockStatusAction: Action = {
       if (!alchemyApiKey && !zkevmRpcUrl) {
         const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
         logger.error(`[checkBlockStatusAction] Configuration error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
         }
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { blockStatusChecked: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       let blockInput: any | null = null;
@@ -124,11 +122,19 @@ export const checkBlockStatusAction: Action = {
       } catch (error) {
         logger.error(
           '[checkBlockStatusAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error : undefined
+          error instanceof Error ? error.message : String(error)
         );
-        throw new Error(
-          `[checkBlockStatusAction] Failed to extract block parameters from input: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMessage = `[checkBlockStatusAction] Failed to extract block parameters from input: ${error instanceof Error ? error.message : String(error)}`;
+        if (callback) {
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        }
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { blockStatusChecked: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS', error: errorMessage },
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
 
       // Determine block identifier
@@ -302,39 +308,35 @@ ${result.description}
 
 ${errorMessages.length > 0 ? `\n**Warnings/Errors:**\n${errorMessages.map((msg) => `- ${msg}`).join('\n')}` : ''}`;
 
-      const responseContent: Content = {
-        text: responseText,
-        actions: ['POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM'],
-        data: {
-          result,
-          errors: errorMessages,
-          success: blockData !== null,
-        },
-      };
-
       if (callback) {
-        await callback(responseContent);
+        await callback({ text: responseText, content: { success: true, result } });
       }
 
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        values: { blockStatusChecked: true, status: result.status, statusCode: result.statusCode },
+        data: {
+          actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS',
+          result,
+          errors: errorMessages,
+        },
+      };
     } catch (error) {
       const errorMessage = `Failed to check block status: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM'],
-        data: {
-          error: errorMessage,
-          success: false,
-        },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
 
-      return errorContent;
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { blockStatusChecked: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

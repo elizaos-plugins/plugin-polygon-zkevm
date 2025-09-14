@@ -1,13 +1,11 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
 import { getCodeTemplate } from '../templates';
@@ -41,7 +39,7 @@ export const getCodeAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getCodeAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -50,16 +48,16 @@ export const getCodeAction: Action = {
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getCodeAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_CODE_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { codeRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_CODE', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let addressInput: any | null = null;
@@ -84,11 +82,19 @@ export const getCodeAction: Action = {
     } catch (error) {
       logger.debug(
         '[getCodeAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[getCodeAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[getCodeAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`;
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { codeRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_CODE', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     const address = addressInput.address;
@@ -139,10 +145,16 @@ export const getCodeAction: Action = {
       }
     }
 
-    const responseContent: Content = {
+    if (callback) {
+      await callback({ text: responseText, content: { success: true, address } });
+    }
+
+    return {
+      success: true,
       text: responseText,
-      actions: ['POLYGON_GET_CODE_ZKEVM'],
+      values: { codeRetrieved: true, isContract: code !== '0x' && code !== '0x0' },
       data: {
+        actionName: 'POLYGON_ZKEVM_GET_CODE',
         address,
         code,
         codeSize: code === '0x' ? 0 : (code.length - 2) / 2,
@@ -151,12 +163,6 @@ export const getCodeAction: Action = {
         method: methodUsed,
       },
     };
-
-    if (callback) {
-      await callback(responseContent);
-    }
-
-    return responseContent;
   },
 
   examples: [

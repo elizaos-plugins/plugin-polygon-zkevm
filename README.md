@@ -1,175 +1,58 @@
-# Project Starter
+# @elizaos/plugin-polygon-zkevm
 
-This is the starter template for ElizaOS projects.
+This plugin provides comprehensive functionality for interacting with Polygon zkEVM blockchain through ElizaOS.
 
-## Features
+## Description
 
-- Pre-configured project structure for ElizaOS development
-- Comprehensive testing setup with component and e2e tests
-- Default character configuration with plugin integration
-- Example service, action, and provider implementations
-- TypeScript configuration for optimal developer experience
-- Built-in documentation and examples
-
-## Getting Started
-
-```bash
-# Clone the starter project
-npx elizaos create my-project
-
-# Navigate to the project directory
-cd my-project
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-## Development
-
-```bash
-# Start development server
-npm run dev
-
-# Build the project
-npm run build
-
-# Test the project
-npm run test
-```
-
-## Testing
-
-ElizaOS provides a comprehensive testing structure for projects:
-
-### Test Structure
-
-- **Component Tests** (`__tests__/` directory):
-
-  - **Unit Tests**: Test individual functions and components in isolation
-  - **Integration Tests**: Test how components work together
-  - Run with: `npm run test:component`
-
-- **End-to-End Tests** (`e2e/` directory):
-
-  - Test the project within a full ElizaOS runtime
-  - Run with: `npm run test:e2e`
-
-- **Running All Tests**:
-  - `npm run test` runs both component and e2e tests
-
-### Writing Tests
-
-Component tests use Vitest:
-
-```typescript
-// Unit test example (__tests__/config.test.ts)
-describe('Configuration', () => {
-  it('should load configuration correctly', () => {
-    expect(config.debug).toBeDefined();
-  });
-});
-
-// Integration test example (__tests__/integration.test.ts)
-describe('Integration: Plugin with Character', () => {
-  it('should initialize character with plugins', async () => {
-    // Test interactions between components
-  });
-});
-```
-
-E2E tests use ElizaOS test interface:
-
-```typescript
-// E2E test example (e2e/project.test.ts)
-export class ProjectTestSuite implements TestSuite {
-  name = 'project_test_suite';
-  tests = [
-    {
-      name: 'project_initialization',
-      fn: async (runtime) => {
-        // Test project in a real runtime
-      },
-    },
-  ];
-}
-
-export default new ProjectTestSuite();
-```
-
-The test utilities in `__tests__/utils/` provide helper functions to simplify writing tests.
-
-## Configuration
-
-Customize your project by modifying:
-
-- `src/index.ts` - Main entry point
-- `src/character.ts` - Character definition
-- `src/plugin.ts` - Plugin configuration
-
-# Polygon zkEVM Plugin
-
-A plugin for interacting with Polygon zkEVM blockchain through Eliza.
+The Polygon zkEVM plugin offers a complete suite of blockchain operations including balance queries, transaction management, smart contract deployment and interaction, cross-chain bridging, and advanced zkEVM-specific features like batch information and block status checking.
 
 ## Features
 
-- Get current block number
-- Get account balances
-- Get transaction details and receipts
-- Get gas price estimates
-- Estimate gas for transactions
-- Get contract code and storage
-- Get transaction logs
-- Check block status
-- Get batch information
-- **Deploy smart contracts**
-- **Bridge assets between Ethereum and Polygon zkEVM** (NEW)
-- Block information and status queries
-- Transaction details and receipts
-- Account balance checking
-- Gas price estimation and analysis
-- Smart contract deployment
-- Smart contract interaction
-- Asset bridging between Ethereum and Polygon zkEVM
-- Message bridging between networks
-- Transaction fee estimation
-- Batch information queries
+- **Blockchain Queries**: Block information, transaction details, and account balances
+- **Transaction Management**: Gas estimation, fee calculation, and transaction execution
+- **Smart Contract Operations**: Deploy and interact with smart contracts
+- **Cross-Chain Bridging**: Bridge assets and messages between Ethereum and Polygon zkEVM
+- **zkEVM-Specific Features**: Batch information, block status, and specialized zkEVM operations
+- **Multiple Provider Support**: Alchemy API integration with RPC fallback
+- **Comprehensive Error Handling**: Robust error management and validation
+- **Type Safety**: Full TypeScript support with strict typing
+
+## Installation
+
+```bash
+bun add @elizaos/plugin-polygon-zkevm
+```
 
 ## Configuration
 
-The plugin requires configuration through environment variables or runtime settings:
+### Required Environment Variables
 
-### Required Settings
+```env
+# At least one provider must be configured
+ALCHEMY_API_KEY=your-alchemy-api-key-here
+# OR
+ZKEVM_RPC_URL=https://polygonzkevm-mainnet.g.alchemy.com/v2
 
-For read-only operations:
+# Required for write operations (contract deployment, bridging, etc.)
+PRIVATE_KEY=your-private-key-here
+```
 
-- `ALCHEMY_API_KEY` OR `ZKEVM_RPC_URL`: At least one endpoint must be configured
+### Environment Configuration
 
-For write operations (like contract deployment):
-
-- `PRIVATE_KEY`: Your wallet's private key for signing transactions
-- `ALCHEMY_API_KEY` OR `ZKEVM_RPC_URL`: At least one endpoint must be configured
-
-### Environment Variables
-
-The plugin supports environment variable fallbacks for all configuration:
-
-```bash
-# Alchemy API (recommended)
+```env
+# Alchemy API (recommended for best performance)
 ALCHEMY_API_KEY=your_alchemy_api_key
 
-# Direct RPC endpoint (fallback)
+# Direct RPC endpoint (fallback option)
 ZKEVM_RPC_URL=https://polygonzkevm-mainnet.g.alchemy.com/v2
 
 # Private key for write operations
 PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 ```
 
-### Runtime Settings
+### Runtime Configuration
 
-Alternatively, you can configure these through the Eliza runtime:
+Alternatively, configure through ElizaOS runtime:
 
 ```typescript
 runtime.setSetting('ALCHEMY_API_KEY', 'your_alchemy_api_key');
@@ -181,46 +64,112 @@ runtime.setSetting('PRIVATE_KEY', '0x1234567890abcdef...');
 
 ## Actions
 
-### Bridge Assets
+### 1. Balance & Account Operations
 
+#### Get Balance
+Query account balances for ETH and ERC-20 tokens.
+
+```typescript
+// Examples
+"What's my ETH balance?"
+"Check balance of 0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+"Get USDC balance for 0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+```
+
+#### Get Account Balance
+Get detailed account information including nonce and balance.
+
+```typescript
+// Examples
+"Get account details for 0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+"Check account info"
+```
+
+### 2. Transaction Operations
+
+#### Get Transaction Details
+Retrieve comprehensive transaction information.
+
+```typescript
+// Examples
+"Get transaction 0x1234567890abcdef..."
+"Show transaction details for 0x1234567890abcdef..."
+```
+
+#### Get Transaction Receipt
+Get transaction receipt with execution details.
+
+```typescript
+// Examples
+"Get receipt for transaction 0x1234567890abcdef..."
+"Show transaction receipt 0x1234567890abcdef..."
+```
+
+#### Estimate Transaction Fee
+Calculate gas costs for transactions.
+
+```typescript
+// Examples
+"Estimate fee for sending 0.1 ETH to 0x742d35Cc6634C0532925A3B8D4C9dB96C4B4d8B6"
+"Calculate transaction fee with priority fee of 25 gwei"
+"How much will it cost to call contract at 0x..."
+```
+
+### 3. Smart Contract Operations
+
+#### Deploy Smart Contract
+Deploy contracts to Polygon zkEVM.
+
+**Action Name**: `DEPLOY_SMART_CONTRACT`
+**Aliases**: `DEPLOY_CONTRACT`, `DEPLOY_ZKEVM_CONTRACT`, `CREATE_CONTRACT`
+
+**Requirements**:
+- `PRIVATE_KEY` must be configured
+- `ALCHEMY_API_KEY` or `ZKEVM_RPC_URL` must be configured
+
+```typescript
+// Examples
+"deploy smart contract with bytecode 0x608060405234801561001057600080fd5b50..."
+"deploy contract with bytecode 0x608060405234801561001057600080fd5b50... and constructor args [\"Hello World\", 1000]"
+"deploy contract with bytecode 0x608060405234801561001057600080fd5b50... with gas limit 2000000"
+```
+
+#### Interact with Smart Contracts
+Call contract functions and execute transactions.
+
+```typescript
+// Examples
+"call balanceOf function on contract 0x1234567890123456789012345678901234567890 with args [\"0x742d35Cc6634C0532925a3b844Bc454e4438f44e\"]"
+"execute transfer function on contract 0x1234567890123456789012345678901234567890"
+```
+
+### 4. Cross-Chain Bridging
+
+#### Bridge Assets
 Bridge ETH or ERC-20 tokens between Ethereum and Polygon zkEVM.
 
 **Action Name**: `BRIDGE_ASSETS`
 **Aliases**: `BRIDGE_TOKENS`, `DEPOSIT_ASSETS`, `WITHDRAW_ASSETS`, `BRIDGE_ETH`, `BRIDGE_ERC20`
 
 **Requirements**:
-
 - `PRIVATE_KEY` must be configured
 - `ALCHEMY_API_KEY` or `ZKEVM_RPC_URL` must be configured
 
 **Supported Operations**:
-
 - **Deposit**: Transfer assets from Ethereum mainnet to Polygon zkEVM
 - **Withdraw**: Transfer assets from Polygon zkEVM to Ethereum mainnet
 
-**Usage Examples**:
-
+```typescript
+// Examples
+"bridge 0.1 ETH from ethereum to polygon zkevm"
+"deposit 100 USDC to polygon zkevm"
+"withdraw 50 USDT from polygon zkevm to ethereum"
+"bridge 1000 tokens at 0x1234567890123456789012345678901234567890 from ethereum to zkevm"
 ```
-bridge 0.1 ETH from ethereum to polygon zkevm
-deposit 100 USDC to polygon zkevm
-withdraw 50 USDT from polygon zkevm to ethereum
-bridge 1000 tokens at 0x1234567890123456789012345678901234567890 from ethereum to zkevm
-```
-
-**Parameters**:
-
-- `tokenAddress`: Contract address for ERC-20 tokens (use `null` or omit for ETH)
-- `amount`: Amount to bridge (e.g., "0.1", "100")
-- `direction`: Either "deposit" (L1→L2) or "withdraw" (L2→L1)
-- `gasLimit`: Optional gas limit override
-- `gasPrice`: Optional gas price in gwei
-- `maxFeePerGas`: Optional max fee per gas for EIP-1559 transactions
-- `maxPriorityFeePerGas`: Optional priority fee for EIP-1559 transactions
 
 **Bridge Process**:
 
 1. **Deposits (Ethereum → zkEVM)**:
-
    - Assets are locked on Ethereum mainnet
    - Equivalent assets are minted on Polygon zkEVM
    - Process typically takes a few minutes
@@ -231,46 +180,88 @@ bridge 1000 tokens at 0x1234567890123456789012345678901234567890 from ethereum t
    - Must wait for challenge period (typically 7 days)
    - Manual claim required on Ethereum mainnet after challenge period
 
-**Response Data**:
+#### Bridge Messages
+Send cross-chain messages between networks.
 
-- `txHash`: Transaction hash of the bridge operation
-- `bridgeTicketId`: Unique bridge ticket identifier for tracking
-- `direction`: Bridge direction (deposit/withdraw)
-- `sourceNetwork`: Source blockchain network
-- `destinationNetwork`: Destination blockchain network
-- `gasUsed`: Gas consumed by the transaction
-- `blockNumber`: Block number where transaction was included
-
-### Deploy Smart Contract
-
-Deploy arbitrary smart contract bytecode to Polygon zkEVM.
-
-**Action Name**: `DEPLOY_SMART_CONTRACT`
-**Aliases**: `DEPLOY_CONTRACT`, `DEPLOY_ZKEVM_CONTRACT`, `CREATE_CONTRACT`
-
-**Requirements**:
-
-- `PRIVATE_KEY` must be configured
-- `ALCHEMY_API_KEY` or `ZKEVM_RPC_URL` must be configured
-
-**Usage Examples**:
-
-```
-deploy smart contract with bytecode 0x608060405234801561001057600080fd5b50...
-deploy contract with bytecode 0x608060405234801561001057600080fd5b50... and constructor args ["Hello World", 1000]
-deploy contract with bytecode 0x608060405234801561001057600080fd5b50... with gas limit 2000000
+```typescript
+// Examples
+"send message 'Hello zkEVM' from ethereum to polygon zkevm"
+"bridge message with data 0x1234 from zkevm to ethereum"
 ```
 
-## Security
+### 5. zkEVM-Specific Operations
 
-- **Never expose your private key** in logs, code, or version control
-- Use environment variables or secure runtime configuration for sensitive data
-- Validate all contract bytecode before deployment
-- Test deployments on testnets before mainnet
+#### Check Block Status
+Verify block finalization and status on zkEVM.
 
-## Testing
+```typescript
+// Examples
+"check block status for block 1000000"
+"is block 1000000 finalized?"
+```
 
-Run tests with:
+#### Get Batch Information
+Retrieve zkEVM batch details and sequencing information.
+
+```typescript
+// Examples
+"get batch info for batch 12345"
+"show batch details 12345"
+```
+
+### 6. Network Information
+
+#### Get Current Block Number
+Get the latest block number.
+
+```typescript
+// Examples
+"what's the current block number?"
+"get latest block"
+```
+
+#### Get Gas Price
+Get current gas price information.
+
+```typescript
+// Examples
+"what's the current gas price?"
+"get gas price estimates"
+```
+
+#### Get Block Details
+Get detailed information about specific blocks.
+
+```typescript
+// Examples
+"get block details for block 1000000"
+"show block info for hash 0x1234567890abcdef..."
+```
+
+## Development
+
+1. Clone the repository
+2. Install dependencies:
+
+```bash
+bun install
+```
+
+3. Build the plugin:
+
+```bash
+bun run build
+```
+
+4. Run tests:
+
+```bash
+bun test
+```
+
+### Testing
+
+Run all tests:
 
 ```bash
 npm test
@@ -280,38 +271,107 @@ For specific test files:
 
 ```bash
 npm test -- deploySmartContract.test.ts
+npm test -- bridgeAssets.test.ts
 ```
 
-### Gas and Fee Estimation
+## API Reference
 
-#### `ESTIMATE_TRANSACTION_FEE`
+### Core Components
 
-Estimates gas limit and total fee for transaction payloads on Polygon zkEVM.
+1. **Configuration Schema**
+   - Validates API keys and RPC URLs
+   - Ensures proper provider configuration
+   - Handles environment variable fallbacks
 
-**Features:**
+2. **Actions**
+   - Balance queries and account operations
+   - Transaction management and estimation
+   - Smart contract deployment and interaction
+   - Cross-chain bridging operations
+   - zkEVM-specific features
 
-- Supports both ETH transfers and contract calls
-- Uses Alchemy API with fallback to JSON-RPC
-- Allows priority fee override
-- Returns structured data: `{ gasLimit: string, fee: string }`
-- Accurate fee calculation within network tolerance
+3. **Providers**
+   - Alchemy API integration
+   - JSON-RPC fallback support
+   - Automatic retry mechanisms
+   - Error handling and validation
 
-**Usage:**
+## Security
 
-- "Estimate fee for sending 0.1 ETH to 0x742d35Cc6634C0532925A3B8D4C9dB96C4B4d8B6"
-- "Calculate transaction fee with priority fee of 25 gwei"
-- "How much will it cost to call contract at 0x..."
+- **Never expose your private key** in logs, code, or version control
+- Use environment variables or secure runtime configuration for sensitive data
+- Validate all contract bytecode before deployment
+- Test deployments on testnets before mainnet
+- Verify bridge operations and understand withdrawal periods
+- Always validate transaction parameters before execution
 
-**Response format:**
+## Future Enhancements
 
-```json
-{
-  "gasLimit": "21000",
-  "fee": "420000000000000",
-  "gasPrice": "20000000000",
-  "gasPriceGwei": "20",
-  "totalFeeEth": "0.00042",
-  "transaction": {...},
-  "network": "polygon-zkevm"
-}
+1. **Advanced zkEVM Features**
+   - Enhanced batch processing
+   - Proof verification tools
+   - State transition monitoring
+   - Rollup analytics
+   - Performance optimization
+   - Custom proof generation
+
+2. **Bridge Improvements**
+   - Bridge aggregation
+   - Fee optimization
+   - Faster finality options
+   - Multi-asset bridging
+   - Bridge monitoring tools
+   - Emergency withdrawal features
+
+3. **Smart Contract Tools**
+   - Contract verification automation
+   - Upgrade management
+   - Security analysis integration
+   - Gas optimization tools
+   - ABI management system
+   - Template library
+
+4. **Developer Experience**
+   - Enhanced debugging tools
+   - Transaction simulation
+   - Performance profiling
+   - Integration templates
+   - CLI improvements
+   - Documentation generator
+
+## Contributing
+
+The plugin contains comprehensive tests. Please run tests before submitting PRs:
+
+```bash
+bun test
 ```
+
+Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for more information.
+
+## Credits
+
+This plugin integrates with and builds upon several key technologies:
+
+- [Polygon zkEVM](https://polygon.technology/polygon-zkevm): Zero-knowledge Ethereum Virtual Machine
+- [Alchemy](https://alchemy.com/): Blockchain infrastructure platform
+- [Ethereum](https://ethereum.org/): Decentralized blockchain platform
+- [viem](https://viem.sh/): TypeScript interface for Ethereum
+- [ElizaOS](https://github.com/elizaos/eliza): AI agent framework
+
+Special thanks to:
+
+- The Polygon team for zkEVM development
+- The Ethereum community for foundational technology
+- The ElizaOS community for contributions and feedback
+
+For more information about Polygon zkEVM:
+
+- [Polygon zkEVM Documentation](https://docs.polygon.technology/zkEVM/)
+- [Ethereum Documentation](https://ethereum.org/developers/)
+- [Alchemy Documentation](https://docs.alchemy.com/)
+- [viem Documentation](https://viem.sh/)
+
+## License
+
+This plugin is part of the ElizaOS project. See the main project repository for license information.

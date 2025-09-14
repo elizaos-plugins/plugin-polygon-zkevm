@@ -1,13 +1,11 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
 import { getStorageAtTemplate } from '../templates';
@@ -41,7 +39,7 @@ export const getStorageAtAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getStorageAtAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -50,16 +48,16 @@ export const getStorageAtAction: Action = {
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getStorageAtAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_STORAGE_AT_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { storageRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_STORAGE', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let storageInput: any | null = null;
@@ -84,11 +82,19 @@ export const getStorageAtAction: Action = {
     } catch (error) {
       logger.debug(
         '[getStorageAtAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[getStorageAtAction] Failed to extract storage parameters from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[getStorageAtAction] Failed to extract storage parameters from input: ${error instanceof Error ? error.message : String(error)}`;
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { storageRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_STORAGE', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     const address = storageInput.address;
@@ -156,10 +162,16 @@ export const getStorageAtAction: Action = {
       }
     }
 
-    const responseContent: Content = {
+    if (callback) {
+      await callback({ text: responseText, content: { success: true, storageValue } });
+    }
+
+    return {
+      success: true,
       text: responseText,
-      actions: ['POLYGON_GET_STORAGE_AT_ZKEVM'],
+      values: { storageRetrieved: true, storageValue },
       data: {
+        actionName: 'POLYGON_ZKEVM_GET_STORAGE',
         address,
         position,
         blockTag,
@@ -168,12 +180,6 @@ export const getStorageAtAction: Action = {
         method: methodUsed,
       },
     };
-
-    if (callback) {
-      await callback(responseContent);
-    }
-
-    return responseContent;
   },
 
   examples: [

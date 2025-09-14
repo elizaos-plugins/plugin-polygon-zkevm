@@ -15,7 +15,7 @@ import {
  * @param timeoutMs - Timeout in milliseconds (default: 30000)
  * @returns Promise resolving to the LLM response
  */
-export async function callLLMWithTimeout<T = any>(
+export async function callLLMWithTimeout<T>(
   runtime: IAgentRuntime,
   state: State | undefined,
   template: string,
@@ -42,7 +42,7 @@ export async function callLLMWithTimeout<T = any>(
   const result = (await Promise.race([llmPromise, timeoutPromise])) as T;
 
   logger.info(`[${actionName}] LLM parameter extraction completed`);
-  logger.debug(`[${actionName}] Parsed LLM parameters:`, result);
+  logger.debug(`[${actionName}] Parsed LLM parameters:`, JSON.stringify(result));
 
   return result;
 }

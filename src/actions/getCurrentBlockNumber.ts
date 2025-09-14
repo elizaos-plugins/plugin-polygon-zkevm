@@ -1,17 +1,13 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+  ActionResult,
   type HandlerCallback,
-  type Content,
+  type IAgentRuntime,
   logger,
-  composePromptFromState,
-  ModelType,
-  parseJSONObjectFromText,
+  type Memory,
+  type State
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
-import { getCurrentBlockNumberTemplate } from '../templates';
 
 interface CurrentBlockParams {
   requestCurrentBlock?: boolean;
@@ -70,14 +66,30 @@ export const getCurrentBlockNumberAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getCurrentBlockNumberAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
     const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      throw new Error('ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.');
+      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
+      if (callback) {
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { currentBlockRetrieved: false, error: true, errorMessage },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
+          error: errorMessage,
+        },
+        error: new Error(errorMessage),
+      };
     }
 
     let blockNumber: number | null = null;
@@ -149,37 +161,55 @@ export const getCurrentBlockNumberAction: Action = {
 
     // Handle result and errors
     if (blockNumber !== null) {
-      const responseContent: Content = {
-        text: `📊 The current Polygon zkEVM block number is **${blockNumber.toLocaleString()}** (retrieved via ${methodUsed}).`,
-        actions: ['POLYGON_GET_CURRENT_BLOCK_NUMBER_ZKEVM'],
+      const successText = `📊 The current Polygon zkEVM block number is **${blockNumber.toLocaleString()}** (retrieved via ${methodUsed}).`;
+
+      if (callback) {
+        await callback({
+          text: successText,
+          content: {
+            success: true,
+            blockNumber,
+            network: 'polygon-zkevm',
+            method: methodUsed,
+            timestamp: Date.now(),
+          },
+        });
+      }
+
+      return {
+        success: true,
+        text: successText,
+        values: { currentBlockRetrieved: true, currentBlockNumber: blockNumber },
         data: {
+          actionName: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
           blockNumber,
           network: 'polygon-zkevm',
           timestamp: Date.now(),
           method: methodUsed,
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } else {
-      const errorMessage = `❌ Failed to retrieve Polygon zkEVM block number using both Alchemy and RPC. Errors: ${errorMessages.join('; ')}`;
+      const errorMessage = `Failed to retrieve Polygon zkEVM block number using both Alchemy and RPC. Errors: ${errorMessages.join('; ')}`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_CURRENT_BLOCK_NUMBER_ZKEVM'],
-        data: { error: errorMessage, errors: errorMessages },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({
+          text: `❌ ${errorMessage}`,
+          content: { success: false, error: errorMessage, errors: errorMessages },
+        });
       }
 
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { currentBlockRetrieved: false, error: true, errorMessage },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
+          error: errorMessage,
+          errors: errorMessages,
+        },
+        error: new Error(errorMessage),
+      };
     }
   },
 
