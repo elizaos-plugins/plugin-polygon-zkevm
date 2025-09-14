@@ -1,15 +1,13 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { JsonRpcProvider, Contract, formatUnits, isAddress, getAddress } from 'ethers';
+import { JsonRpcProvider, formatUnits, getAddress, isAddress } from 'ethers';
 import { getAccountBalanceTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
 
@@ -103,7 +101,7 @@ export const getAccountBalanceAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getAccountBalanceAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -112,16 +110,16 @@ export const getAccountBalanceAction: Action = {
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getAccountBalanceAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_ACCOUNT_BALANCE_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { accountBalanceRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let addressInput: any | null = null;
@@ -146,11 +144,19 @@ export const getAccountBalanceAction: Action = {
     } catch (error) {
       logger.debug(
         '[getAccountBalanceAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[getAccountBalanceAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[getAccountBalanceAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`;
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { accountBalanceRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     const address = addressInput.address;
@@ -164,17 +170,16 @@ export const getAccountBalanceAction: Action = {
     } catch (error) {
       const errorMessage = `Invalid address: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMessage);
-
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_GET_ACCOUNT_BALANCE_ZKEVM'],
-        data: { error: errorMessage, success: false },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
-      return errorContent;
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { accountBalanceRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     // Setup provider - prefer Alchemy, fallback to RPC
@@ -230,22 +235,22 @@ export const getAccountBalanceAction: Action = {
 
 ${errorMessages.length > 0 ? `\n**Warnings:**\n${errorMessages.map((msg) => `- ${msg}`).join('\n')}` : ''}`;
 
-    const responseContent: Content = {
+    if (callback) {
+      await callback({ text: responseText, content: { success: true, address: validatedAddress } });
+    }
+
+    return {
+      success: true,
       text: responseText,
-      actions: ['POLYGON_GET_ACCOUNT_BALANCE_ZKEVM'],
+      values: { accountBalanceRetrieved: true, address: validatedAddress },
       data: {
+        actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE',
         result,
         network: 'polygon-zkevm',
         timestamp: Date.now(),
         method: methodUsed,
       },
     };
-
-    if (callback) {
-      await callback(responseContent);
-    }
-
-    return responseContent;
   },
 
   examples: [

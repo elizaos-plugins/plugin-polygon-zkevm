@@ -1,15 +1,13 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { JsonRpcProvider, isAddress, getAddress } from 'ethers';
+import { JsonRpcProvider, getAddress, isAddress } from 'ethers';
 import { estimateGasTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
 
@@ -80,12 +78,9 @@ export const estimateGasAction: Action = {
     const hasAddress = /0x[a-fA-F0-9]{40}/.test(messageText);
     const hasValue = /\d+(?:\.\d+)?\s*eth/i.test(messageText) || messageText.includes('send');
 
-    logger.debug('[estimateGasAction] Validation check:', {
-      hasGasKeywords,
-      hasAddress,
-      hasValue,
-      messageText: messageText.substring(0, 100),
-    });
+    logger.debug(
+      `[estimateGasAction] Validation check: hasGasKeywords=${hasGasKeywords}, hasAddress=${hasAddress}, hasValue=${hasValue}, messageText=${messageText.substring(0, 100)}`
+    );
 
     return hasGasKeywords || (hasAddress && hasValue);
   },
@@ -96,7 +91,7 @@ export const estimateGasAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('[estimateGasAction] Handler called!');
 
@@ -106,16 +101,16 @@ export const estimateGasAction: Action = {
       if (!alchemyApiKey && !zkevmRpcUrl) {
         const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
         logger.error(`[estimateGasAction] Configuration error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_ESTIMATE_GAS_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
         }
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { gasEstimated: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_ESTIMATE_GAS', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       let gasInput: any | null = null;
@@ -144,11 +139,19 @@ export const estimateGasAction: Action = {
       } catch (error) {
         logger.error(
           '[estimateGasAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error : undefined
+          error instanceof Error ? error.message : String(error)
         );
-        throw new Error(
-          `[estimateGasAction] Failed to extract gas estimation parameters from input: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMessage = `[estimateGasAction] Failed to extract gas estimation parameters from input: ${error instanceof Error ? error.message : String(error)}`;
+        if (callback) {
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        }
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { gasEstimated: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_ESTIMATE_GAS', error: errorMessage },
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
 
       // Setup provider - prefer Alchemy, fallback to RPC
@@ -236,10 +239,16 @@ export const estimateGasAction: Action = {
 
 **Network:** Polygon zkEVM`;
 
-      const responseContent: Content = {
+      if (callback) {
+        await callback({ text: responseText, content: { success: true, gasEstimate: gasEstimate.toString() } });
+      }
+
+      return {
+        success: true,
         text: responseText,
-        actions: ['POLYGON_ESTIMATE_GAS_ZKEVM'],
+        values: { gasEstimated: true, gasEstimate: gasEstimate.toString() },
         data: {
+          actionName: 'POLYGON_ZKEVM_ESTIMATE_GAS',
           gasEstimate: gasEstimate.toString(),
           gasPrice: gasPrice.toString(),
           gasCostWei: gasCostWei.toString(),
@@ -248,30 +257,20 @@ export const estimateGasAction: Action = {
           transaction,
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } catch (error) {
       const errorMessage = `Failed to estimate gas: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_ESTIMATE_GAS_ZKEVM'],
-        data: {
-          error: errorMessage,
-          success: false,
-        },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
-
-      return errorContent;
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { gasEstimated: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_ESTIMATE_GAS', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

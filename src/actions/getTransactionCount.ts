@@ -1,13 +1,11 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
 import { getTransactionCountTemplate } from '../templates';
@@ -39,7 +37,7 @@ export const getTransactionCountAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getTransactionCountAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -48,16 +46,16 @@ export const getTransactionCountAction: Action = {
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getTransactionCountAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_TRANSACTION_COUNT_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { txCountRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_COUNT', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let addressInput: any | null = null;
@@ -82,11 +80,19 @@ export const getTransactionCountAction: Action = {
     } catch (error) {
       logger.debug(
         '[getTransactionCountAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[getTransactionCountAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[getTransactionCountAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`;
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { txCountRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_COUNT', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     const address = addressInput.address;
@@ -124,10 +130,16 @@ export const getTransactionCountAction: Action = {
 
     responseText += `\n\n💡 **Next Nonce:** ${pendingCount}`;
 
-    const responseContent: Content = {
+    if (callback) {
+      await callback({ text: responseText, content: { success: true, address, nextNonce: pendingCount } });
+    }
+
+    return {
+      success: true,
       text: responseText,
-      actions: ['POLYGON_GET_TRANSACTION_COUNT_ZKEVM'],
+      values: { txCountRetrieved: true, nextNonce: pendingCount },
       data: {
+        actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_COUNT',
         address,
         latestCount,
         pendingCount,
@@ -136,12 +148,6 @@ export const getTransactionCountAction: Action = {
         method: methodUsed,
       },
     };
-
-    if (callback) {
-      await callback(responseContent);
-    }
-
-    return responseContent;
   },
 
   examples: [

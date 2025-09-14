@@ -1,16 +1,14 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { getLogsTemplate } from '../templates';
 import { JsonRpcProvider } from 'ethers';
+import { getLogsTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
 
 /**
@@ -39,7 +37,7 @@ export const getLogsAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('Handling GET_LOGS_ZKEVM action');
 
@@ -49,16 +47,16 @@ export const getLogsAction: Action = {
       if (!alchemyApiKey && !zkevmRpcUrl) {
         const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
         logger.error(`[getLogsAction] Configuration error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_GET_LOGS_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
         }
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { logsRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_LOGS', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       let logsInput: any | null = null;
@@ -80,11 +78,19 @@ export const getLogsAction: Action = {
       } catch (error) {
         logger.error(
           '[getLogsAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error : undefined
+          error instanceof Error ? error.message : String(error)
         );
-        throw new Error(
-          `[getLogsAction] Failed to extract logs parameters from input: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMessage = `[getLogsAction] Failed to extract logs parameters from input: ${error instanceof Error ? error.message : String(error)}`;
+        if (callback) {
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        }
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { logsRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_LOGS', error: errorMessage },
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
 
       // Setup provider - prefer Alchemy, fallback to RPC
@@ -188,33 +194,34 @@ export const getLogsAction: Action = {
         }
       }
 
-      const responseContent: Content = {
+      if (callback) {
+        await callback({ text: responseText, content: { success: true, totalLogs: logs.length } });
+      }
+      return {
+        success: true,
         text: responseText,
-        actions: ['POLYGON_GET_LOGS_ZKEVM'],
+        values: { logsRetrieved: true, totalLogs: logs.length },
         data: {
+          actionName: 'POLYGON_ZKEVM_GET_LOGS',
           filter,
-          logs: logs.slice(0, 10), // Include first 10 logs in data
+          logs: logs.slice(0, 10),
           totalLogs: logs.length,
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-      return responseContent;
     } catch (error) {
       logger.error('Error in GET_LOGS_ZKEVM action:', error);
 
-      const errorContent: Content = {
-        text: `Error getting logs: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        actions: ['POLYGON_GET_LOGS_ZKEVM'],
-        data: { error: error instanceof Error ? error.message : 'Unknown error' },
-      };
-
+      const errText = `Error getting logs: ${error instanceof Error ? error.message : 'Unknown error'}`;
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errText, content: { success: false, error: errText } });
       }
-      return errorContent;
+      return {
+        success: false,
+        text: `❌ ${errText}`,
+        values: { logsRetrieved: false, error: true, errorMessage: errText },
+        data: { actionName: 'POLYGON_ZKEVM_GET_LOGS', error: errText },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

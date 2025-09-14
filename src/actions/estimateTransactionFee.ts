@@ -1,15 +1,13 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { JsonRpcProvider, isAddress, getAddress, parseUnits, formatUnits } from 'ethers';
+import { JsonRpcProvider, formatUnits, getAddress, isAddress, parseUnits } from 'ethers';
 import { estimateTransactionFeeTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
 
@@ -87,12 +85,12 @@ export const estimateTransactionFeeAction: Action = {
     const hasAddress = /0x[a-fA-F0-9]{40}/.test(messageText);
     const hasValue = /\d+(?:\.\d+)?\s*eth/i.test(messageText) || messageText.includes('send');
 
-    logger.debug('[estimateTransactionFeeAction] Validation check:', {
+    logger.debug('[estimateTransactionFeeAction] Validation check:', String({
       hasFeeKeywords,
       hasAddress,
       hasValue,
       messageText: messageText.substring(0, 100),
-    });
+    }));
 
     return hasFeeKeywords || (hasAddress && hasValue);
   },
@@ -103,7 +101,7 @@ export const estimateTransactionFeeAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('[estimateTransactionFeeAction] Handler called!');
 
@@ -113,16 +111,16 @@ export const estimateTransactionFeeAction: Action = {
       if (!alchemyApiKey && !zkevmRpcUrl) {
         const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
         logger.error(`[estimateTransactionFeeAction] Configuration error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_ESTIMATE_TRANSACTION_FEE_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
         }
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { feeEstimated: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_ESTIMATE_TRANSACTION_FEE', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       let transactionInput: any | null = null;
@@ -167,11 +165,19 @@ export const estimateTransactionFeeAction: Action = {
       } catch (error) {
         logger.error(
           '[estimateTransactionFeeAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error : undefined
+          error instanceof Error ? error.message : String(error)
         );
-        throw new Error(
-          `[estimateTransactionFeeAction] Failed to extract transaction parameters from input: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMessage = `[estimateTransactionFeeAction] Failed to extract transaction parameters from input: ${error instanceof Error ? error.message : String(error)}`;
+        if (callback) {
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        }
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { feeEstimated: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_ESTIMATE_TRANSACTION_FEE', error: errorMessage },
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
 
       // Setup provider - prefer Alchemy, fallback to RPC
@@ -308,35 +314,34 @@ export const estimateTransactionFeeAction: Action = {
 **Network:** Polygon zkEVM
 ${transactionInput.priorityFee ? `\n**Note:** Used custom priority fee of ${transactionInput.priorityFee} Gwei` : ''}`;
 
-      const responseContent: Content = {
-        text: responseText,
-        actions: ['POLYGON_ESTIMATE_TRANSACTION_FEE_ZKEVM'],
-        data: responseData,
-      };
-
       if (callback) {
-        await callback(responseContent);
+        await callback({ text: responseText, content: { success: true, ...responseData } });
       }
 
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        values: { feeEstimated: true, gasLimit: responseData.gasLimit },
+        data: {
+          actionName: 'POLYGON_ZKEVM_ESTIMATE_TRANSACTION_FEE',
+          ...responseData,
+        },
+      };
     } catch (error) {
       const errorMessage = `Failed to estimate transaction fee: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_ESTIMATE_TRANSACTION_FEE_ZKEVM'],
-        data: {
-          error: errorMessage,
-          success: false,
-        },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
 
-      return errorContent;
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { feeEstimated: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_ESTIMATE_TRANSACTION_FEE', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

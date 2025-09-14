@@ -1,23 +1,18 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+  type ActionResult,
   type HandlerCallback,
-  type Content,
+  type IAgentRuntime,
   logger,
-  ModelType,
-  composePromptFromState,
+  type Memory,
+  type State
 } from '@elizaos/core';
-import { z } from 'zod';
 import {
-  JsonRpcProvider,
-  Wallet,
   Contract,
+  JsonRpcProvider,
   parseEther,
-  formatEther,
   parseUnits,
-  getBytes,
+  Wallet
 } from 'ethers';
 import { bridgeMessagesTemplate } from '../templates';
 import { callLLMWithTimeout } from '../utils/llmHelpers';
@@ -94,7 +89,7 @@ export const bridgeMessagesAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[bridgeMessagesAction] Handler called!');
 
     const privateKey = runtime.getSetting('PRIVATE_KEY');
@@ -104,31 +99,31 @@ export const bridgeMessagesAction: Action = {
     if (!privateKey) {
       const errorMessage = 'PRIVATE_KEY is required for bridging messages.';
       logger.error(`[bridgeMessagesAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { messageBridged: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[bridgeMessagesAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { messageBridged: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let messageParams: any | null = null;
@@ -170,11 +165,19 @@ export const bridgeMessagesAction: Action = {
     } catch (error) {
       logger.debug(
         '[bridgeMessagesAction] LLM parameter extraction failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[bridgeMessagesAction] Failed to extract message parameters from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[bridgeMessagesAction] Failed to extract message parameters from input: ${error instanceof Error ? error.message : String(error)}`;
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { messageBridged: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     try {
@@ -356,7 +359,7 @@ export const bridgeMessagesAction: Action = {
       logger.info('[bridgeMessagesAction] Sending message transaction...');
 
       // Debug log all parameters before calling contract
-      logger.info(`[bridgeMessagesAction] Contract call parameters:`, {
+      logger.info(`[bridgeMessagesAction] Contract call parameters:`, JSON.stringify({
         destinationNetwork: txParams.destinationNetwork,
         destinationAddress: txParams.destinationAddress,
         amount: txParams.amount,
@@ -364,7 +367,7 @@ export const bridgeMessagesAction: Action = {
         forceUpdateGlobalExitRoot: txParams.forceUpdateGlobalExitRoot,
         permitData: txParams.permitData,
         txOptions: txOptions,
-      });
+      }));
 
       // Send the bridge message transaction
       const tx = await bridgeContract.bridgeAsset(
@@ -421,11 +424,16 @@ ${depositCount !== null ? `- Deposit Count: ${depositCount}` : ''}
 
 **Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).`;
 
-      const successContent: Content = {
+      if (callback) {
+        await callback({ text: successMessage, content: { success: true, transactionHash: tx.hash } });
+      }
+
+      return {
+        success: true,
         text: successMessage,
-        actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
+        values: { messageBridged: true, transactionHash: tx.hash },
         data: {
-          success: true,
+          actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES',
           transactionHash: tx.hash,
           messageId: messageId,
           depositCount: depositCount,
@@ -436,31 +444,20 @@ ${depositCount !== null ? `- Deposit Count: ${depositCount}` : ''}
           gasUsed: receipt.gasUsed.toString(),
         },
       };
-
-      if (callback) {
-        await callback(successContent);
-      }
-
-      return successContent;
     } catch (error) {
       const errorMessage = `Failed to bridge message: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[bridgeMessagesAction] ${errorMessage}`, error);
 
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
-        data: {
-          error: errorMessage,
-          destinationChain: messageParams?.destinationChain,
-          messageData: messageParams?.messageData,
-        },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
-
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { messageBridged: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage, destinationChain: messageParams?.destinationChain, messageData: messageParams?.messageData },
+        error: new Error(errorMessage),
+      };
     }
   },
 

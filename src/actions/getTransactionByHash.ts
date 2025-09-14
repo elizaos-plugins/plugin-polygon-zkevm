@@ -1,13 +1,11 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
 import { getTransactionByHashTemplate } from '../templates';
@@ -41,7 +39,7 @@ export const getTransactionByHashAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('[getTransactionByHashAction] Handler called!');
 
@@ -51,16 +49,16 @@ export const getTransactionByHashAction: Action = {
       if (!alchemyApiKey && !zkevmRpcUrl) {
         const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
         logger.error(`[getTransactionByHashAction] Configuration error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: errorMessage,
-          actions: ['POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM'],
-          data: { error: errorMessage },
-        };
-
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
         }
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { txRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage },
+          error: new Error(errorMessage),
+        };
       }
 
       let hashInput: any | null = null;
@@ -85,11 +83,19 @@ export const getTransactionByHashAction: Action = {
       } catch (error) {
         logger.error(
           '[getTransactionByHashAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error : undefined
+          error instanceof Error ? error.message : String(error)
         );
-        throw new Error(
-          `[getTransactionByHashAction] Failed to extract transaction hash from input: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMessage = `[getTransactionByHashAction] Failed to extract transaction hash from input: ${error instanceof Error ? error.message : String(error)}`;
+        if (callback) {
+          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        }
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { txRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage },
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
 
       const txHash = hashInput.transactionHash;
@@ -109,14 +115,17 @@ export const getTransactionByHashAction: Action = {
       const transaction = await provider.getTransaction(txHash);
 
       if (!transaction) {
-        const errorContent: Content = {
-          text: `❌ Transaction not found: ${txHash}`,
-          actions: ['POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM'],
-        };
+        const errorMessage = `Transaction not found: ${txHash}`;
         if (callback) {
-          await callback(errorContent);
+          await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
         }
-        return errorContent;
+        return {
+          success: false,
+          text: `❌ ${errorMessage}`,
+          values: { txRetrieved: false, error: true, errorMessage },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage, txHash },
+          error: new Error(errorMessage),
+        };
       }
 
       // Format transaction details
@@ -145,10 +154,16 @@ export const getTransactionByHashAction: Action = {
 
 ${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.data.slice(0, 100)}${transaction.data.length > 100 ? '...' : ''}\`` : ''}`;
 
-      const responseContent: Content = {
+      if (callback) {
+        await callback({ text: responseText, content: { success: true, hash: transaction.hash } });
+      }
+
+      return {
+        success: true,
         text: responseText,
-        actions: ['POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM'],
+        values: { txRetrieved: true, txHash: transaction.hash },
         data: {
+          actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH',
           transaction: {
             hash: transaction.hash,
             blockNumber: transaction.blockNumber,
@@ -166,30 +181,21 @@ ${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.dat
           network: 'polygon-zkevm',
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } catch (error) {
       const errorMessage = `Failed to get transaction details: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM'],
-        data: {
-          error: errorMessage,
-          success: false,
-        },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
 
-      return errorContent;
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { txRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

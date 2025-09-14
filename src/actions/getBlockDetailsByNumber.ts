@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type IAgentRuntime,
   type Memory,
   type State,
@@ -36,29 +37,25 @@ export const getBlockDetailsByNumberAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getBlockDetailsByNumberAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY'); // Assuming direct env access for now
     const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL'); // Assuming direct env access for now
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      throw new Error('ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.');
-    }
-
-    if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getBlockDetailsByNumberAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_BLOCK_DETAILS_BY_NUMBER_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { blockRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_NUMBER', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let blockDetails: any | null = null;
@@ -89,15 +86,35 @@ export const getBlockDetailsByNumberAction: Action = {
       // If OBJECT_LARGE fails, fall back to TEXT_LARGE and manual parsing
       logger.debug(
         '[getBlockDetailsByNumberAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error('[getBlockDetailsByNumberAction] OBJECT_LARGE model failed');
+      const errorMessage = '[getBlockDetailsByNumberAction] OBJECT_LARGE model failed';
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { blockRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_NUMBER', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     // Extract the actual block number from the LLM response
     const blockNumber = blockNumberInput?.blockNumber;
     if (!blockNumber || typeof blockNumber !== 'number') {
-      throw new Error('Invalid block number extracted from input');
+      const errorMessage = 'Invalid block number extracted from input';
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { blockRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_NUMBER', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     // Convert block number to hex format for API calls
@@ -114,7 +131,9 @@ export const getBlockDetailsByNumberAction: Action = {
           `[getBlockDetailsByNumberAction] Attempting to use Alchemy API for block ${blockNumber}`
         );
         // Assuming the RPC URL pattern and API key usage is consistent
-        const alchemyUrl = `${zkevmRpcUrl}/${alchemyApiKey}`; // Adjust if Alchemy URL structure is different
+        const zkevmAlchemyUrl =
+          runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+        const alchemyUrl = `${zkevmAlchemyUrl}/${alchemyApiKey}`;
         const options = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -165,11 +184,12 @@ export const getBlockDetailsByNumberAction: Action = {
       try {
         const provider = new JsonRpcProvider(zkevmRpcUrl);
         // Ethers.js getBlock by number accepts hex or decimal strings, and a boolean for full details
-        const block = await provider.getBlock(blockNumber, true); // Use the number directly
+        const block = await provider.getBlock(blockNumber, true);
 
         if (block) {
-          // Ethers.js getBlock returns a Block object, convert to plain object if needed for data structure
-          blockDetails = block.toJSON(); // Or just use block object directly if compatible
+          // Convert to JSON if available; otherwise use object directly
+          const maybeJson = (block as unknown as { toJSON?: () => unknown }).toJSON;
+          blockDetails = typeof maybeJson === 'function' ? maybeJson.call(block) : block;
           methodUsed = 'rpc';
           logger.info(
             `[getBlockDetailsByNumberAction] Block details from RPC for block ${blockNumber}`
@@ -196,14 +216,18 @@ export const getBlockDetailsByNumberAction: Action = {
         // Add other zkEVM specific fields as needed based on RPC response structure
       };
 
-      const responseContent: Content = {
-        text: `Here are the details for Polygon zkEVM block ${blockNumber} (via ${methodUsed}):
-\`\`\`json
-${JSON.stringify(blockDetails, null, 2)}
-\`\`\`
-ZK-specific fields: ${JSON.stringify(zkevmFields, null, 2)}`,
-        actions: ['POLYGON_GET_BLOCK_DETAILS_BY_NUMBER_ZKEVM'],
+      const successText = `Here are the details for Polygon zkEVM block ${blockNumber} (via ${methodUsed}):\n\n\`\`\`json\n${JSON.stringify(blockDetails, null, 2)}\n\`\`\`\nZK-specific fields: ${JSON.stringify(zkevmFields, null, 2)}`;
+
+      if (callback) {
+        await callback({ text: successText, content: { success: true, blockNumber } });
+      }
+
+      return {
+        success: true,
+        text: successText,
+        values: { blockRetrieved: true, blockNumber },
         data: {
+          actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_NUMBER',
           block: blockDetails,
           zkevmFields: zkevmFields,
           network: 'polygon-zkevm',
@@ -211,28 +235,22 @@ ZK-specific fields: ${JSON.stringify(zkevmFields, null, 2)}`,
           method: methodUsed,
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } else {
       // Both methods failed or block not found
       const errorMessage = `Failed to retrieve details for Polygon zkEVM block ${blockNumber} using both Alchemy and RPC. Errors: ${errorMessages.join('; ')}. It's possible the block number is invalid or the block does not exist yet.`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_BLOCK_DETAILS_BY_NUMBER_ZKEVM'],
-        data: { error: errorMessage, errors: errorMessages, blockNumber },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
 
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { blockRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_NUMBER', error: errorMessage, errors: errorMessages, blockNumber },
+        error: new Error(errorMessage),
+      };
     }
   },
   examples: [

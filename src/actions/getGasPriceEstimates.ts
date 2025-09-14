@@ -1,15 +1,12 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { getGasPriceEstimatesTemplate } from '../templates';
 import { JsonRpcProvider, formatUnits, parseUnits } from 'ethers';
 
 interface GasPriceEstimates {
@@ -60,7 +57,7 @@ export const getGasPriceEstimatesAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('⛽ Handling GET_GAS_PRICE_ESTIMATES action');
 
@@ -215,26 +212,33 @@ export const getGasPriceEstimatesAction: Action = {
       // Add zkEVM specific note
       responseText += `\n\n💡 *zkEVM gas prices are typically lower than Ethereum mainnet*`;
 
-      const responseContent: Content = {
-        text: responseText,
-        actions: ['POLYGON_GET_GAS_PRICE_ESTIMATES_ZKEVM'],
-        source: message.content.source,
-        data: result,
-      };
+      if (callback) {
+        await callback({ text: responseText, content: { success: true, ...result } });
+      }
 
-      await callback(responseContent);
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        values: { estimatesRetrieved: true, basePriceGwei: result.basePriceGwei },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_GAS_PRICE_ESTIMATES',
+          ...result,
+        },
+      };
     } catch (error) {
       logger.error('❌ Error in GET_GAS_PRICE_ESTIMATES action:', error);
 
-      const errorContent: Content = {
-        text: `❌ Error getting gas price estimates: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        actions: ['POLYGON_GET_GAS_PRICE_ESTIMATES_ZKEVM'],
-        source: message.content.source,
+      const errText = `❌ Error getting gas price estimates: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      if (callback) {
+        await callback({ text: errText, content: { success: false, error: errText } });
+      }
+      return {
+        success: false,
+        text: errText,
+        values: { estimatesRetrieved: false, error: true, errorMessage: errText },
+        data: { actionName: 'POLYGON_ZKEVM_GET_GAS_PRICE_ESTIMATES', error: errText },
+        error: error instanceof Error ? error : new Error(String(error)),
       };
-
-      await callback(errorContent);
-      return errorContent;
     }
   },
 

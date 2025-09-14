@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -41,7 +42,7 @@ export const getBalanceAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getBalanceAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -50,16 +51,28 @@ export const getBalanceAction: Action = {
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getBalanceAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_GET_BALANCE_ZKEVM'],
-        data: { error: errorMessage },
-      };
-
+      
       if (callback) {
-        await callback(errorContent);
+        callback({
+          text: errorMessage,
+          content: { error: errorMessage, success: false },
+        });
       }
-      throw new Error(errorMessage);
+      
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: {
+          balanceRetrieved: false,
+          error: true,
+          errorMessage,
+        },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_BALANCE',
+          error: errorMessage,
+        },
+        error: new Error(errorMessage),
+      };
     }
 
     let addressInput: any | null = null;
@@ -84,11 +97,31 @@ export const getBalanceAction: Action = {
     } catch (error) {
       logger.debug(
         '[getBalanceAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[getBalanceAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[getBalanceAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`;
+      
+      if (callback) {
+        callback({
+          text: errorMessage,
+          content: { error: errorMessage, success: false },
+        });
+      }
+      
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: {
+          balanceRetrieved: false,
+          error: true,
+          errorMessage,
+        },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_BALANCE',
+          error: errorMessage,
+        },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     const address = addressInput.address;
@@ -106,31 +139,75 @@ export const getBalanceAction: Action = {
       provider = new JsonRpcProvider(zkevmRpcUrl);
     }
 
-    // Get balance
-    const balance = await provider.getBalance(address);
-    const balanceInEth = Number(balance) / 1e18;
+    try {
+      // Get balance
+      const balance = await provider.getBalance(address);
+      const balanceInEth = Number(balance) / 1e18;
 
-    const responseContent: Content = {
-      text: `💰 **Balance for ${address}**
+      const successText = `💰 **Balance for ${address}**
 
 **Balance:** ${balanceInEth.toFixed(6)} ETH (${balance.toString()} wei)
 **Network:** Polygon zkEVM
-**Method:** ${methodUsed}`,
-      actions: ['POLYGON_GET_BALANCE_ZKEVM'],
-      data: {
-        address,
-        balance: balance.toString(),
-        balanceInEth,
-        network: 'polygon-zkevm',
-        method: methodUsed,
-      },
-    };
+**Method:** ${methodUsed}`;
 
-    if (callback) {
-      await callback(responseContent);
+      if (callback) {
+        callback({
+          text: successText,
+          content: {
+            success: true,
+            address,
+            balance: balance.toString(),
+            balanceInEth,
+            network: 'polygon-zkevm',
+            method: methodUsed,
+          },
+        });
+      }
+
+      return {
+        success: true,
+        text: successText,
+        values: {
+          balanceRetrieved: true,
+          address,
+          balanceInEth,
+        },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_BALANCE',
+          address,
+          balance: balance.toString(),
+          balanceInEth,
+          network: 'polygon-zkevm',
+          method: methodUsed,
+        },
+      };
+    } catch (error) {
+      const errorMessage = `Failed to retrieve balance: ${error instanceof Error ? error.message : String(error)}`;
+      logger.error(`[getBalanceAction] ${errorMessage}`);
+      
+      if (callback) {
+        callback({
+          text: errorMessage,
+          content: { error: errorMessage, success: false },
+        });
+      }
+      
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: {
+          balanceRetrieved: false,
+          error: true,
+          errorMessage,
+        },
+        data: {
+          actionName: 'POLYGON_ZKEVM_GET_BALANCE',
+          address,
+          error: errorMessage,
+        },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
-
-    return responseContent;
   },
 
   examples: [

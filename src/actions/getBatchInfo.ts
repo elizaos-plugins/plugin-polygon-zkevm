@@ -1,13 +1,11 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
 import { JsonRpcProvider } from 'ethers';
 import { getBatchInfoTemplate } from '../templates';
@@ -47,7 +45,7 @@ export const getBatchInfoAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info('[getBatchInfoAction] Handler called!');
 
     const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
@@ -56,16 +54,16 @@ export const getBatchInfoAction: Action = {
     if (!alchemyApiKey && !zkevmRpcUrl) {
       const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
       logger.error(`[getBatchInfoAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYGON_ZKEVM_GET_BATCH_INFO'],
-        data: { error: errorMessage },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
       }
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { batchRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BATCH_INFO', error: errorMessage },
+        error: new Error(errorMessage),
+      };
     }
 
     let batchInput: any | null = null;
@@ -90,11 +88,19 @@ export const getBatchInfoAction: Action = {
     } catch (error) {
       logger.debug(
         '[getBatchInfoAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error.message : String(error)
       );
-      throw new Error(
-        `[getBatchInfoAction] Failed to extract batch number from input: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errorMessage = `[getBatchInfoAction] Failed to extract batch number from input: ${error instanceof Error ? error.message : String(error)}`;
+      if (callback) {
+        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+      }
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { batchRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BATCH_INFO', error: errorMessage },
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
 
     const batchNumber = batchInput.batchNumber;
@@ -168,37 +174,37 @@ export const getBatchInfoAction: Action = {
 
 ${errorMessages.length > 0 ? `\n**Warnings:**\n${errorMessages.map((msg) => `- ${msg}`).join('\n')}` : ''}`;
 
-      const responseContent: Content = {
+      if (callback) {
+        await callback({ text: responseText, content: { success: true, batchNumber } });
+      }
+
+      return {
+        success: true,
         text: responseText,
-        actions: ['POLYGON_ZKEVM_GET_BATCH_INFO'],
+        values: { batchRetrieved: true, batchNumber },
         data: {
+          actionName: 'POLYGON_ZKEVM_GET_BATCH_INFO',
           batchInfo,
           network: 'polygon-zkevm',
           timestamp: Date.now(),
           method: methodUsed,
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } else {
       const errorMessage = `Failed to retrieve batch information for batch ${batchNumber}. ${errorMessages.join('; ')}`;
       logger.error(errorMessage);
 
-      const errorContent: Content = {
-        text: `❌ ${errorMessage}`,
-        actions: ['POLYGON_ZKEVM_GET_BATCH_INFO'],
-        data: { error: errorMessage, errors: errorMessages, batchNumber },
-      };
-
       if (callback) {
-        await callback(errorContent);
+        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
       }
 
-      throw new Error(errorMessage);
+      return {
+        success: false,
+        text: `❌ ${errorMessage}`,
+        values: { batchRetrieved: false, error: true, errorMessage },
+        data: { actionName: 'POLYGON_ZKEVM_GET_BATCH_INFO', error: errorMessage, errors: errorMessages, batchNumber },
+        error: new Error(errorMessage),
+      };
     }
   },
 

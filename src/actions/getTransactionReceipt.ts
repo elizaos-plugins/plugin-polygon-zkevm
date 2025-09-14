@@ -1,15 +1,12 @@
 import {
   type Action,
-  type Content,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  logger,
-  ModelType,
-  composePromptFromState,
+  logger
 } from '@elizaos/core';
-import { getTransactionReceiptTemplate } from '../templates';
 import { JsonRpcProvider } from 'ethers';
 
 /**
@@ -40,7 +37,7 @@ export const getTransactionReceiptAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('Handling GET_TRANSACTION_RECEIPT_ZKEVM action');
 
@@ -49,13 +46,15 @@ export const getTransactionReceiptAction: Action = {
       const txHashMatch = text.match(/0x[a-fA-F0-9]{64}/);
 
       if (!txHashMatch) {
-        const errorContent: Content = {
-          text: 'Please provide a valid transaction hash (0x... 64 characters) to get the transaction receipt.',
-          actions: ['POLYGON_GET_TRANSACTION_RECEIPT_ZKEVM'],
-          source: message.content.source,
+        const errorText = 'Please provide a valid transaction hash (0x... 64 characters) to get the transaction receipt.';
+        await callback({ text: errorText, content: { success: false, error: errorText } });
+        return {
+          success: false,
+          text: `❌ ${errorText}`,
+          values: { receiptRetrieved: false, error: true, errorMessage: errorText },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_RECEIPT', error: errorText },
+          error: new Error(errorText),
         };
-        await callback(errorContent);
-        return errorContent;
       }
 
       const txHash = txHashMatch[0];
@@ -80,13 +79,15 @@ export const getTransactionReceiptAction: Action = {
       const receipt = await provider.getTransactionReceipt(txHash);
 
       if (!receipt) {
-        const errorContent: Content = {
-          text: `Transaction receipt not found: ${txHash}. The transaction may be pending or does not exist.`,
-          actions: ['POLYGON_GET_TRANSACTION_RECEIPT_ZKEVM'],
-          source: message.content.source,
+        const errText = `Transaction receipt not found: ${txHash}. The transaction may be pending or does not exist.`;
+        await callback({ text: errText, content: { success: false, error: errText } });
+        return {
+          success: false,
+          text: `❌ ${errText}`,
+          values: { receiptRetrieved: false, error: true, errorMessage: errText },
+          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_RECEIPT', error: errText },
+          error: new Error(errText),
         };
-        await callback(errorContent);
-        return errorContent;
       }
 
       // Format receipt details
@@ -116,25 +117,25 @@ export const getTransactionReceiptAction: Action = {
         responseText += `\n📝 Logs: ${receipt.logs.length} events emitted`;
       }
 
-      const responseContent: Content = {
+      await callback({ text: responseText, content: { success: true, hash: receipt.hash } });
+      return {
+        success: true,
         text: responseText,
-        actions: ['POLYGON_GET_TRANSACTION_RECEIPT_ZKEVM'],
-        source: message.content.source,
+        values: { receiptRetrieved: true, hash: receipt.hash },
+        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_RECEIPT', hash: receipt.hash, blockNumber: receipt.blockNumber },
       };
-
-      await callback(responseContent);
-      return responseContent;
     } catch (error) {
       logger.error('Error in GET_TRANSACTION_RECEIPT_ZKEVM action:', error);
 
-      const errorContent: Content = {
-        text: `Error getting transaction receipt: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        actions: ['POLYGON_GET_TRANSACTION_RECEIPT_ZKEVM'],
-        source: message.content.source,
+      const errText = `Error getting transaction receipt: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      await callback({ text: errText, content: { success: false, error: errText } });
+      return {
+        success: false,
+        text: `❌ ${errText}`,
+        values: { receiptRetrieved: false, error: true, errorMessage: errText },
+        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_RECEIPT', error: errText },
+        error: error instanceof Error ? error : new Error(String(error)),
       };
-
-      await callback(errorContent);
-      return errorContent;
     }
   },
 

@@ -1,148 +1,86 @@
-import {
-  logger,
-  type Character,
-  type IAgentRuntime,
-  type Project,
-  type ProjectAgent,
-} from '@elizaos/core';
-import starterPlugin from './plugin.ts';
+import type { Plugin } from '@elizaos/core';
+import { type IAgentRuntime, logger } from '@elizaos/core';
+import { z } from 'zod';
+import { getCurrentBlockNumberAction } from './actions/getCurrentBlockNumber';
+import { getBalanceAction } from './actions/getBalance';
+import { getTransactionByHashAction } from './actions/getTransactionByHash';
+import { getTransactionReceiptAction } from './actions/getTransactionReceipt';
+import { getGasPriceAction } from './actions/getGasPrice';
+import { getTransactionCountAction } from './actions/getTransactionCount';
+import { getCodeAction } from './actions/getCode';
+import { getStorageAtAction } from './actions/getStorageAt';
+import { getLogsAction } from './actions/getLogs';
+import { estimateGasAction } from './actions/estimateGas';
+import { getTransactionDetailsAction } from './actions/getTransactionDetails';
+import { getAccountBalanceAction } from './actions/getAccountBalance';
+import { getGasPriceEstimatesAction } from './actions/getGasPriceEstimates';
+import { checkBlockStatusAction } from './actions/checkBlockStatus';
+import { getBatchInfoAction } from './actions/getBatchInfo';
+import { deploySmartContractAction } from './actions/deploySmartContract';
+import { interactSmartContractAction } from './actions/interactSmartContract';
+import { bridgeAssetsAction } from './actions/bridgeAssets';
+import { bridgeMessagesAction } from './actions/bridgeMessages';
+import { estimateTransactionFeeAction } from './actions/estimateTransactionFee';
+import { getBlockDetailsByNumberAction } from './actions/getBlockDetailsByNumber';
+import { getBlockDetailsByHashAction } from './actions/getBlockDetailsByHash';
 
-// Export the plugin directly for use in other configurations
-export { default as polygonZkevmPlugin } from './plugin.ts';
+const configSchema = z
+  .object({
+    ALCHEMY_API_KEY: z.string().min(1, 'ALCHEMY_API_KEY is required').optional(),
+    ZKEVM_RPC_URL: z.string().url('Invalid ZKEVM_RPC_URL').optional(),
+    PRIVATE_KEY: z.string().min(1, 'PRIVATE_KEY is required').optional(),
+  })
+  .refine((data) => data.ALCHEMY_API_KEY || data.ZKEVM_RPC_URL, {
+    message: 'Either ALCHEMY_API_KEY or ZKEVM_RPC_URL must be provided',
+  });
 
-/**
- * Represents the default character (Eliza) with her specific attributes and behaviors.
- * Eliza responds to a wide range of messages, is helpful and conversational.
- * She interacts with users in a concise, direct, and helpful manner, using humor and empathy effectively.
- * Eliza's responses are geared towards providing assistance on various topics while maintaining a friendly demeanor.
- */
-export const character: Character = {
-  name: 'Eliza',
-  plugins: [
-    '@elizaos/plugin-sql',
-    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-local-ai'] : []),
-    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
-    ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
-    ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
-  ],
-  settings: {
-    secrets: {},
+const plugin: Plugin = {
+  name: 'polygon-zkevm',
+  description: 'Plugin for interacting with Polygon zkEVM',
+  async init(_config: Record<string, string>, runtime: IAgentRuntime) {
+    logger.info('Initializing Polygon zkEVM plugin');
+    try {
+      const configToValidate = {
+        ALCHEMY_API_KEY: runtime.getSetting('ALCHEMY_API_KEY') || process.env.ALCHEMY_API_KEY,
+        ZKEVM_RPC_URL: runtime.getSetting('ZKEVM_RPC_URL') || process.env.ZKEVM_RPC_URL,
+        PRIVATE_KEY: runtime.getSetting('PRIVATE_KEY') || process.env.PRIVATE_KEY,
+      };
+
+      await configSchema.parseAsync(configToValidate);
+      logger.info('Polygon zkEVM plugin configuration validated successfully.');
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new Error(
+          `Invalid Polygon zkEVM plugin configuration: ${error.errors.map((e) => e.message).join(', ')}`
+        );
+      }
+      throw error;
+    }
   },
-  system:
-    'Respond to all messages in a helpful, conversational manner. Provide assistance on a wide range of topics, using knowledge when needed. Be concise but thorough, friendly but professional. Use humor when appropriate and be empathetic to user needs. Provide valuable information and insights when questions are asked.',
-  bio: [
-    'Engages with all types of questions and conversations',
-    'Provides helpful, concise responses',
-    'Uses knowledge resources effectively when needed',
-    'Balances brevity with completeness',
-    'Uses humor and empathy appropriately',
-    'Adapts tone to match the conversation context',
-    'Offers assistance proactively',
-    'Communicates clearly and directly',
+  actions: [
+    getCurrentBlockNumberAction,
+    getBalanceAction,
+    getTransactionByHashAction,
+    getTransactionReceiptAction,
+    getGasPriceAction,
+    getTransactionCountAction,
+    getCodeAction,
+    getStorageAtAction,
+    getLogsAction,
+    estimateGasAction,
+    estimateTransactionFeeAction,
+    getTransactionDetailsAction,
+    getAccountBalanceAction,
+    getGasPriceEstimatesAction,
+    checkBlockStatusAction,
+    getBatchInfoAction,
+    deploySmartContractAction,
+    interactSmartContractAction,
+    bridgeAssetsAction,
+    bridgeMessagesAction,
+    getBlockDetailsByNumberAction,
+    getBlockDetailsByHashAction,
   ],
-  topics: [
-    'general knowledge and information',
-    'problem solving and troubleshooting',
-    'technology and software',
-    'community building and management',
-    'business and productivity',
-    'creativity and innovation',
-    'personal development',
-    'communication and collaboration',
-    'education and learning',
-    'entertainment and media',
-  ],
-  messageExamples: [
-    [
-      {
-        name: '{{name1}}',
-        content: {
-          text: 'This user keeps derailing technical discussions with personal problems.',
-        },
-      },
-      {
-        name: 'Eliza',
-        content: {
-          text: 'DM them. Sounds like they need to talk about something else.',
-        },
-      },
-      {
-        name: '{{name1}}',
-        content: {
-          text: 'I tried, they just keep bringing drama back to the main channel.',
-        },
-      },
-      {
-        name: 'Eliza',
-        content: {
-          text: "Send them my way. I've got time today.",
-        },
-      },
-    ],
-    [
-      {
-        name: '{{name1}}',
-        content: {
-          text: "I can't handle being a mod anymore. It's affecting my mental health.",
-        },
-      },
-      {
-        name: 'Eliza',
-        content: {
-          text: 'Drop the channels. You come first.',
-        },
-      },
-      {
-        name: '{{name1}}',
-        content: {
-          text: "But who's going to handle everything?",
-        },
-      },
-      {
-        name: 'Eliza',
-        content: {
-          text: "We will. Take the break. Come back when you're ready.",
-        },
-      },
-    ],
-  ],
-  style: {
-    all: [
-      'Keep responses concise but informative',
-      'Use clear and direct language',
-      'Be engaging and conversational',
-      'Use humor when appropriate',
-      'Be empathetic and understanding',
-      'Provide helpful information',
-      'Be encouraging and positive',
-      'Adapt tone to the conversation',
-      'Use knowledge resources when needed',
-      'Respond to all types of questions',
-    ],
-    chat: [
-      'Be conversational and natural',
-      'Engage with the topic at hand',
-      'Be helpful and informative',
-      'Show personality and warmth',
-    ],
-  },
 };
 
-const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
-  logger.info('Initializing character');
-  logger.info('Name: ', character.name);
-};
-
-export const projectAgent: ProjectAgent = {
-  character,
-  init: async (runtime: IAgentRuntime) => await initCharacter({ runtime }),
-  plugins: [starterPlugin],
-};
-const project: Project = {
-  agents: [projectAgent],
-};
-
-export default project;
+export default plugin;
