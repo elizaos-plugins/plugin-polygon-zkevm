@@ -61,7 +61,34 @@
   "platform": "node",
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {}
+    "pluginParameters": {
+      "ALCHEMY_API_KEY": {
+        "type": "string",
+        "description": "Alchemy API key for Polygon zkEVM network access. Provides enhanced performance and reliability over direct RPC connections.",
+        "required": false,
+        "sensitive": true
+      },
+      "ZKEVM_RPC_URL": {
+        "type": "string",
+        "description": "Direct RPC endpoint URL for Polygon zkEVM network. Used as fallback if ALCHEMY_API_KEY is not provided. At least one of ALCHEMY_API_KEY or ZKEVM_RPC_URL must be configured.",
+        "required": false,
+        "default": "https://polygonzkevm-mainnet.g.alchemy.com/v2",
+        "sensitive": false
+      },
+      "ZKEVM_ALCHEMY_URL": {
+        "type": "string",
+        "description": "Optional custom Alchemy base URL for Polygon zkEVM. Used to override the default Alchemy endpoint URL.",
+        "required": false,
+        "default": "https://polygonzkevm-mainnet.g.alchemy.com/v2",
+        "sensitive": false
+      },
+      "PRIVATE_KEY": {
+        "type": "string",
+        "description": "Hex-encoded private key (starting with 0x) required for write operations including smart contract deployment, asset bridging, and transaction signing.",
+        "required": false,
+        "sensitive": true
+      }
+    }
   },
   "npmPackage": "plugin-polygon-zkevm"
 }
