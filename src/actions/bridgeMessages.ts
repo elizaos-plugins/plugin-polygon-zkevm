@@ -5,33 +5,33 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  type State
-} from '@elizaos/core';
+  type State,
+} from "@elizaos/core";
 import {
   Contract,
   JsonRpcProvider,
   parseEther,
   parseUnits,
-  Wallet
-} from 'ethers';
-import { bridgeMessagesTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  Wallet,
+} from "ethers";
+import { bridgeMessagesTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 // Polygon zkEVM Bridge Contract ABI for message passing
 const BRIDGE_ABI = [
   // Bridge message function - uses the same bridgeAsset function with metadata
-  'function bridgeAsset(uint32 destinationNetwork, address destinationAddress, uint256 amount, address token, bool forceUpdateGlobalExitRoot, bytes permitData) external payable',
+  "function bridgeAsset(uint32 destinationNetwork, address destinationAddress, uint256 amount, address token, bool forceUpdateGlobalExitRoot, bytes permitData) external payable",
   // Claim message function
-  'function claimAsset(bytes32[32] smtProof, uint32 index, bytes32 mainnetExitRoot, bytes32 rollupExitRoot, uint32 originNetwork, address originTokenAddress, uint32 destinationNetwork, address destinationAddress, uint256 amount, bytes metadata) external',
+  "function claimAsset(bytes32[32] smtProof, uint32 index, bytes32 mainnetExitRoot, bytes32 rollupExitRoot, uint32 originNetwork, address originTokenAddress, uint32 destinationNetwork, address destinationAddress, uint256 amount, bytes metadata) external",
   // Events
-  'event BridgeEvent(uint8 leafType, uint32 originNetwork, address originAddress, uint32 destinationNetwork, address destinationAddress, uint256 amount, bytes metadata, uint32 depositCount)',
-  'event ClaimEvent(uint32 index, uint32 originNetwork, address originAddress, address destinationAddress, uint256 amount)',
+  "event BridgeEvent(uint8 leafType, uint32 originNetwork, address originAddress, uint32 destinationNetwork, address destinationAddress, uint256 amount, bytes metadata, uint32 depositCount)",
+  "event ClaimEvent(uint32 index, uint32 originNetwork, address originAddress, address destinationAddress, uint256 amount)",
 ];
 
 // Bridge contract addresses
 const BRIDGE_ADDRESSES = {
-  mainnet: '0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe', // Ethereum mainnet bridge
-  zkevm: '0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe', // zkEVM bridge (same address)
+  mainnet: "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe", // Ethereum mainnet bridge
+  zkevm: "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe", // zkEVM bridge (same address)
 };
 
 // Network IDs for Polygon zkEVM bridge
@@ -41,42 +41,46 @@ const NETWORK_IDS = {
 };
 
 export const bridgeMessagesAction: Action = {
-  name: 'POLYGON_ZKEVM_BRIDGE_MESSAGES',
+  name: "POLYGON_ZKEVM_BRIDGE_MESSAGES",
   similes: [
-    'SEND_MESSAGE',
-    'CROSS_CHAIN_MESSAGE',
-    'BRIDGE_CALLDATA',
-    'SEND_CROSS_CHAIN_MESSAGE',
-    'MESSAGE_BRIDGE',
+    "SEND_MESSAGE",
+    "CROSS_CHAIN_MESSAGE",
+    "BRIDGE_CALLDATA",
+    "SEND_CROSS_CHAIN_MESSAGE",
+    "MESSAGE_BRIDGE",
   ].map((s) => `POLYGON_ZKEVM_${s}`),
   description:
-    'Sends arbitrary calldata messages between Ethereum and Polygon zkEVM using the bridge contract.',
+    "Sends arbitrary calldata messages between Ethereum and Polygon zkEVM using the bridge contract.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
     }
 
-    const content = message.content?.text?.toLowerCase() || '';
+    const content = message.content?.text?.toLowerCase() || "";
 
     // Keywords that indicate bridge message operations
     const bridgeMessageKeywords = [
-      'bridge message',
-      'send message',
-      'cross chain message',
-      'l1 message',
-      'l2 message',
-      'message bridge',
-      'relay message',
-      'message relay',
-      'cross layer',
-      'claim message',
-      'verify message',
-      'bridge data',
-      'message proof',
+      "bridge message",
+      "send message",
+      "cross chain message",
+      "l1 message",
+      "l2 message",
+      "message bridge",
+      "relay message",
+      "message relay",
+      "cross layer",
+      "claim message",
+      "verify message",
+      "bridge data",
+      "message proof",
     ];
 
     // Must contain bridge message-related keywords
@@ -88,40 +92,57 @@ export const bridgeMessagesAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[bridgeMessagesAction] Handler called!');
+    logger.info("[bridgeMessagesAction] Handler called!");
 
-    const privateKey = runtime.getSetting('PRIVATE_KEY');
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const privateKey = runtime.getSetting("PRIVATE_KEY");
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!privateKey) {
-      const errorMessage = 'PRIVATE_KEY is required for bridging messages.';
-      logger.error(`[bridgeMessagesAction] Configuration error: ${errorMessage}`);
+      const errorMessage = "PRIVATE_KEY is required for bridging messages.";
+      logger.error(
+        `[bridgeMessagesAction] Configuration error: ${errorMessage}`,
+      );
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { messageBridged: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_BRIDGE_MESSAGES",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-      logger.error(`[bridgeMessagesAction] Configuration error: ${errorMessage}`);
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+      logger.error(
+        `[bridgeMessagesAction] Configuration error: ${errorMessage}`,
+      );
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { messageBridged: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_BRIDGE_MESSAGES",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -132,50 +153,63 @@ export const bridgeMessagesAction: Action = {
     // Extract message parameters using LLM
     try {
       messageParams = await callLLMWithTimeout<{
-        destinationChain: 'ethereum' | 'zkevm';
+        destinationChain: "ethereum" | "zkevm";
         messageData: string;
         gasLimit?: string | number;
         gasPrice?: string;
         maxFeePerGas?: string;
         maxPriorityFeePerGas?: string;
         value?: string;
-      }>(runtime, state, bridgeMessagesTemplate, 'bridgeMessagesAction');
+      }>(runtime, state, bridgeMessagesTemplate, "bridgeMessagesAction");
 
       // Check if the model returned an error field
       if (messageParams?.error) {
-        logger.error('[bridgeMessagesAction] LLM returned an error:', messageParams?.error);
+        logger.error(
+          "[bridgeMessagesAction] LLM returned an error:",
+          messageParams?.error,
+        );
         throw new Error(messageParams?.error);
       }
 
       // Validate required parameters
       if (!messageParams?.destinationChain || !messageParams?.messageData) {
         throw new Error(
-          'Missing required message parameters: destinationChain and messageData are required.'
+          "Missing required message parameters: destinationChain and messageData are required.",
         );
       }
 
-      if (!['ethereum', 'zkevm'].includes(messageParams.destinationChain)) {
-        throw new Error('Invalid destination chain. Must be "ethereum" or "zkevm".');
+      if (!["ethereum", "zkevm"].includes(messageParams.destinationChain)) {
+        throw new Error(
+          'Invalid destination chain. Must be "ethereum" or "zkevm".',
+        );
       }
 
       // Validate message data format
-      if (!messageParams.messageData.startsWith('0x')) {
-        throw new Error('Message data must be valid hex string starting with 0x.');
+      if (!messageParams.messageData.startsWith("0x")) {
+        throw new Error(
+          "Message data must be valid hex string starting with 0x.",
+        );
       }
     } catch (error) {
       logger.debug(
-        '[bridgeMessagesAction] LLM parameter extraction failed',
-        error instanceof Error ? error.message : String(error)
+        "[bridgeMessagesAction] LLM parameter extraction failed",
+        error instanceof Error ? error.message : String(error),
       );
       const errorMessage = `[bridgeMessagesAction] Failed to extract message parameters from input: ${error instanceof Error ? error.message : String(error)}`;
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { messageBridged: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_BRIDGE_MESSAGES",
+          error: errorMessage,
+        },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
@@ -188,53 +222,61 @@ export const bridgeMessagesAction: Action = {
       let destinationNetwork: number;
       let bridgeAddress: string;
 
-      if (messageParams.destinationChain === 'ethereum') {
+      if (messageParams.destinationChain === "ethereum") {
         // Message from zkEVM to Ethereum
-        sourceNetwork = 'zkEVM';
+        sourceNetwork = "zkEVM";
         destinationNetwork = NETWORK_IDS.ethereum;
         bridgeAddress = BRIDGE_ADDRESSES.zkevm;
 
         if (alchemyApiKey) {
           const zkevmAlchemyUrl =
-            runtime.getSetting('ZKEVM_ALCHEMY_URL') ||
-            'https://polygonzkevm-mainnet.g.alchemy.com/v2';
-          sourceProvider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
+            runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+            "https://polygonzkevm-mainnet.g.alchemy.com/v2";
+          sourceProvider = new JsonRpcProvider(
+            `${zkevmAlchemyUrl}/${alchemyApiKey}`,
+          );
         } else if (zkevmRpcUrl) {
           sourceProvider = new JsonRpcProvider(zkevmRpcUrl);
         } else {
-          sourceProvider = new JsonRpcProvider('https://zkevm-rpc.com'); // Fallback
+          sourceProvider = new JsonRpcProvider("https://zkevm-rpc.com"); // Fallback
         }
 
         if (alchemyApiKey) {
           destinationProvider = new JsonRpcProvider(
-            `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`
+            `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
           );
         } else {
-          destinationProvider = new JsonRpcProvider('https://ethereum.publicnode.com'); // Fallback
+          destinationProvider = new JsonRpcProvider(
+            "https://ethereum.publicnode.com",
+          ); // Fallback
         }
       } else {
         // Message from Ethereum to zkEVM
-        sourceNetwork = 'Ethereum';
+        sourceNetwork = "Ethereum";
         destinationNetwork = NETWORK_IDS.zkevm;
         bridgeAddress = BRIDGE_ADDRESSES.mainnet;
 
         if (alchemyApiKey) {
           sourceProvider = new JsonRpcProvider(
-            `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`
+            `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
           );
         } else {
-          sourceProvider = new JsonRpcProvider('https://ethereum.publicnode.com'); // Fallback
+          sourceProvider = new JsonRpcProvider(
+            "https://ethereum.publicnode.com",
+          ); // Fallback
         }
 
         if (alchemyApiKey) {
           const zkevmAlchemyUrl =
-            runtime.getSetting('ZKEVM_ALCHEMY_URL') ||
-            'https://polygonzkevm-mainnet.g.alchemy.com/v2';
-          destinationProvider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
+            runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+            "https://polygonzkevm-mainnet.g.alchemy.com/v2";
+          destinationProvider = new JsonRpcProvider(
+            `${zkevmAlchemyUrl}/${alchemyApiKey}`,
+          );
         } else if (zkevmRpcUrl) {
           destinationProvider = new JsonRpcProvider(zkevmRpcUrl);
         } else {
-          destinationProvider = new JsonRpcProvider('https://zkevm-rpc.com'); // Fallback
+          destinationProvider = new JsonRpcProvider("https://zkevm-rpc.com"); // Fallback
         }
       }
 
@@ -249,20 +291,22 @@ export const bridgeMessagesAction: Action = {
         destinationNetwork: destinationNetwork,
         destinationAddress: walletAddress, // Message will be sent to the same wallet on destination chain
         amount: 0, // No ETH transfer, just message
-        token: '0x0000000000000000000000000000000000000000', // ETH address (null token)
+        token: "0x0000000000000000000000000000000000000000", // ETH address (null token)
         forceUpdateGlobalExitRoot: true,
         permitData: messageParams.messageData, // The arbitrary calldata goes here
       };
 
       // Handle ETH value if specified
-      const ethValue = messageParams.value ? parseEther(messageParams.value) : 0;
+      const ethValue = messageParams.value
+        ? parseEther(messageParams.value)
+        : 0;
 
       // Validate and prepare permitData
       let permitDataBytes: string;
       try {
         // Ensure the calldata is valid hex
-        if (!messageParams.messageData.startsWith('0x')) {
-          throw new Error('Message data must start with 0x');
+        if (!messageParams.messageData.startsWith("0x")) {
+          throw new Error("Message data must start with 0x");
         }
 
         // Get hex data without 0x prefix
@@ -271,45 +315,51 @@ export const bridgeMessagesAction: Action = {
         // Validate hex format and minimum length
         const hexPattern = /^[0-9a-fA-F]+$/;
         if (!hexPattern.test(hexData)) {
-          throw new Error('Message data contains invalid hex characters');
+          throw new Error("Message data contains invalid hex characters");
         }
 
         // Check if hex data has odd length and auto-fix by padding with 0
         if (hexData.length % 2 !== 0) {
           logger.warn(
-            `[bridgeMessagesAction] Calldata has odd length (${hexData.length}), padding with trailing zero`
+            `[bridgeMessagesAction] Calldata has odd length (${hexData.length}), padding with trailing zero`,
           );
-          hexData = hexData + '0'; // Pad with trailing zero
+          hexData = hexData + "0"; // Pad with trailing zero
         }
 
         // Minimum 4 bytes for valid calldata (function selector)
         if (hexData.length < 8) {
           throw new Error(
-            'Message data must be at least 4 bytes (8 hex characters) for a valid function call'
+            "Message data must be at least 4 bytes (8 hex characters) for a valid function call",
           );
         }
 
         // Reconstruct the padded calldata
-        permitDataBytes = '0x' + hexData;
+        permitDataBytes = "0x" + hexData;
 
         logger.info(
-          `[bridgeMessagesAction] Valid calldata: ${permitDataBytes} (${hexData.length / 2} bytes)`
+          `[bridgeMessagesAction] Valid calldata: ${permitDataBytes} (${hexData.length / 2} bytes)`,
         );
 
         // Additional validation for common function calls
         if (hexData.length >= 8) {
           const functionSelector = hexData.slice(0, 8);
-          if (functionSelector === 'a9059cbb') {
-            logger.info(`[bridgeMessagesAction] Detected ERC-20 transfer function call`);
-          } else if (functionSelector === '095ea7b3') {
-            logger.info(`[bridgeMessagesAction] Detected ERC-20 approve function call`);
+          if (functionSelector === "a9059cbb") {
+            logger.info(
+              `[bridgeMessagesAction] Detected ERC-20 transfer function call`,
+            );
+          } else if (functionSelector === "095ea7b3") {
+            logger.info(
+              `[bridgeMessagesAction] Detected ERC-20 approve function call`,
+            );
           } else {
-            logger.info(`[bridgeMessagesAction] Function selector: 0x${functionSelector}`);
+            logger.info(
+              `[bridgeMessagesAction] Function selector: 0x${functionSelector}`,
+            );
           }
         }
       } catch (error) {
         throw new Error(
-          `Invalid calldata format: ${error instanceof Error ? error.message : String(error)}`
+          `Invalid calldata format: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
 
@@ -326,12 +376,15 @@ export const bridgeMessagesAction: Action = {
           txParams.token,
           txParams.forceUpdateGlobalExitRoot,
           txParams.permitData,
-          { value: ethValue }
+          { value: ethValue },
         );
         // Add 20% buffer
         gasLimit = (gasLimit * BigInt(120)) / BigInt(100);
       } catch (error) {
-        logger.warn('[bridgeMessagesAction] Gas estimation failed, using default:', error);
+        logger.warn(
+          "[bridgeMessagesAction] Gas estimation failed, using default:",
+          error,
+        );
         gasLimit = BigInt(500000); // Default gas limit for message bridging
       }
 
@@ -349,25 +402,31 @@ export const bridgeMessagesAction: Action = {
       // Handle gas pricing
       if (messageParams.maxFeePerGas && messageParams.maxPriorityFeePerGas) {
         // EIP-1559 transaction
-        txOptions.maxFeePerGas = parseUnits(messageParams.maxFeePerGas, 'gwei');
-        txOptions.maxPriorityFeePerGas = parseUnits(messageParams.maxPriorityFeePerGas, 'gwei');
+        txOptions.maxFeePerGas = parseUnits(messageParams.maxFeePerGas, "gwei");
+        txOptions.maxPriorityFeePerGas = parseUnits(
+          messageParams.maxPriorityFeePerGas,
+          "gwei",
+        );
       } else if (messageParams.gasPrice) {
         // Legacy transaction
-        txOptions.gasPrice = parseUnits(messageParams.gasPrice, 'gwei');
+        txOptions.gasPrice = parseUnits(messageParams.gasPrice, "gwei");
       }
 
-      logger.info('[bridgeMessagesAction] Sending message transaction...');
+      logger.info("[bridgeMessagesAction] Sending message transaction...");
 
       // Debug log all parameters before calling contract
-      logger.info(`[bridgeMessagesAction] Contract call parameters:`, JSON.stringify({
-        destinationNetwork: txParams.destinationNetwork,
-        destinationAddress: txParams.destinationAddress,
-        amount: txParams.amount,
-        token: txParams.token,
-        forceUpdateGlobalExitRoot: txParams.forceUpdateGlobalExitRoot,
-        permitData: txParams.permitData,
-        txOptions: txOptions,
-      }));
+      logger.info(
+        `[bridgeMessagesAction] Contract call parameters:`,
+        JSON.stringify({
+          destinationNetwork: txParams.destinationNetwork,
+          destinationAddress: txParams.destinationAddress,
+          amount: txParams.amount,
+          token: txParams.token,
+          forceUpdateGlobalExitRoot: txParams.forceUpdateGlobalExitRoot,
+          permitData: txParams.permitData,
+          txOptions: txOptions,
+        }),
+      );
 
       // Send the bridge message transaction
       const tx = await bridgeContract.bridgeAsset(
@@ -377,14 +436,16 @@ export const bridgeMessagesAction: Action = {
         txParams.token,
         txParams.forceUpdateGlobalExitRoot,
         txParams.permitData,
-        txOptions
+        txOptions,
       );
 
       logger.info(`[bridgeMessagesAction] Transaction sent: ${tx.hash}`);
 
       // Wait for transaction confirmation
       const receipt = await tx.wait();
-      logger.info(`[bridgeMessagesAction] Transaction confirmed in block: ${receipt.blockNumber}`);
+      logger.info(
+        `[bridgeMessagesAction] Transaction confirmed in block: ${receipt.blockNumber}`,
+      );
 
       // Extract message ID from events
       let messageId: string | null = null;
@@ -397,7 +458,7 @@ export const bridgeMessagesAction: Action = {
             data: log.data,
           });
 
-          if (parsedLog && parsedLog.name === 'BridgeEvent') {
+          if (parsedLog && parsedLog.name === "BridgeEvent") {
             depositCount = Number(parsedLog.args.depositCount);
             messageId = `${sourceNetwork}-${destinationNetwork}-${depositCount}`;
             logger.info(`[bridgeMessagesAction] Message ID: ${messageId}`);
@@ -417,15 +478,18 @@ export const bridgeMessagesAction: Action = {
 - To: ${messageParams.destinationChain}
 - Block Number: ${receipt.blockNumber}
 - Gas Used: ${receipt.gasUsed.toString()}
-${messageId ? `- Message ID: \`${messageId}\`` : ''}
-${depositCount !== null ? `- Deposit Count: ${depositCount}` : ''}
+${messageId ? `- Message ID: \`${messageId}\`` : ""}
+${depositCount !== null ? `- Deposit Count: ${depositCount}` : ""}
 
 **Message Data:** \`${messageParams.messageData}\`
 
 **Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).`;
 
       if (callback) {
-        await callback({ text: successMessage, content: { success: true, transactionHash: tx.hash } });
+        await callback({
+          text: successMessage,
+          content: { success: true, transactionHash: tx.hash },
+        });
       }
 
       return {
@@ -433,7 +497,7 @@ ${depositCount !== null ? `- Deposit Count: ${depositCount}` : ''}
         text: successMessage,
         values: { messageBridged: true, transactionHash: tx.hash },
         data: {
-          actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES',
+          actionName: "POLYGON_ZKEVM_BRIDGE_MESSAGES",
           transactionHash: tx.hash,
           messageId: messageId,
           depositCount: depositCount,
@@ -449,13 +513,21 @@ ${depositCount !== null ? `- Deposit Count: ${depositCount}` : ''}
       logger.error(`[bridgeMessagesAction] ${errorMessage}`, error);
 
       if (callback) {
-        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
+        await callback({
+          text: `❌ ${errorMessage}`,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { messageBridged: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_BRIDGE_MESSAGES', error: errorMessage, destinationChain: messageParams?.destinationChain, messageData: messageParams?.messageData },
+        data: {
+          actionName: "POLYGON_ZKEVM_BRIDGE_MESSAGES",
+          error: errorMessage,
+          destinationChain: messageParams?.destinationChain,
+          messageData: messageParams?.messageData,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -464,61 +536,61 @@ ${depositCount !== null ? `- Deposit Count: ${depositCount}` : ''}
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: {
-          text: 'bridge calldata 0xa9059cbb000000000000000000000000742d35cc6000000000000000000000000000000000000000000000000000000000000000000000000000000000de0b6b3a7640000 to ethereum',
+          text: "bridge calldata 0xa9059cbb000000000000000000000000742d35cc6000000000000000000000000000000000000000000000000000000000000000000000000000000000de0b6b3a7640000 to ethereum",
         },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
-          text: '✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0x1234567890abcdef...`\n- From: zkEVM\n- To: ethereum\n- Block Number: 12345\n- Gas Used: 200000\n- Message ID: `zkEVM-0-12345`\n\n**Message Data:** `0xa9059cbb000000000000000000000000742d35cc6000000000000000000000000000000000000000000000000000000000000000000000000000000000de0b6b3a7640000`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).',
-          actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
-        },
-      },
-    ],
-    [
-      {
-        name: 'user',
-        content: {
-          text: 'send calldata 0x095ea7b3000000000000000000000000742d35cc60000000000000000000000000000000000000000000000000000000000000000000000000000001bc16d674ec80000 to polygon zkevm',
-        },
-      },
-      {
-        name: 'assistant',
-        content: {
-          text: '✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0xabcdef1234567890...`\n- From: Ethereum\n- To: zkevm\n- Block Number: 18500000\n- Gas Used: 150000\n- Message ID: `Ethereum-1-67890`\n\n**Message Data:** `0x095ea7b3000000000000000000000000742d35cc60000000000000000000000000000000000000000000000000000000000000000000000000000001bc16d674ec80000`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).',
-          actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
+          text: "✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0x1234567890abcdef...`\n- From: zkEVM\n- To: ethereum\n- Block Number: 12345\n- Gas Used: 200000\n- Message ID: `zkEVM-0-12345`\n\n**Message Data:** `0xa9059cbb000000000000000000000000742d35cc6000000000000000000000000000000000000000000000000000000000000000000000000000000000de0b6b3a7640000`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).",
+          actions: ["POLYGON_BRIDGE_MESSAGES_ZKEVM"],
         },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: {
-          text: 'bridge message 0x1234abcd to ethereum',
+          text: "send calldata 0x095ea7b3000000000000000000000000742d35cc60000000000000000000000000000000000000000000000000000000000000000000000000000001bc16d674ec80000 to polygon zkevm",
         },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
-          text: '✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0xfedcba0987654321...`\n- From: zkEVM\n- To: ethereum\n- Block Number: 8500000\n- Gas Used: 180000\n- Message ID: `zkEVM-0-55555`\n\n**Message Data:** `0x1234abcd`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).',
-          actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
+          text: "✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0xabcdef1234567890...`\n- From: Ethereum\n- To: zkevm\n- Block Number: 18500000\n- Gas Used: 150000\n- Message ID: `Ethereum-1-67890`\n\n**Message Data:** `0x095ea7b3000000000000000000000000742d35cc60000000000000000000000000000000000000000000000000000000000000000000000000000001bc16d674ec80000`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).",
+          actions: ["POLYGON_BRIDGE_MESSAGES_ZKEVM"],
         },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: {
-          text: 'send cross chain message with data 0xabcdef1234567890 from ethereum to polygon zkevm',
+          text: "bridge message 0x1234abcd to ethereum",
         },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
-          text: '✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0x9876543210fedcba...`\n- From: Ethereum\n- To: zkevm\n- Block Number: 18600000\n- Gas Used: 165000\n- Message ID: `Ethereum-1-77777`\n\n**Message Data:** `0xabcdef1234567890`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).',
-          actions: ['POLYGON_BRIDGE_MESSAGES_ZKEVM'],
+          text: "✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0xfedcba0987654321...`\n- From: zkEVM\n- To: ethereum\n- Block Number: 8500000\n- Gas Used: 180000\n- Message ID: `zkEVM-0-55555`\n\n**Message Data:** `0x1234abcd`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).",
+          actions: ["POLYGON_BRIDGE_MESSAGES_ZKEVM"],
+        },
+      },
+    ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "send cross chain message with data 0xabcdef1234567890 from ethereum to polygon zkevm",
+        },
+      },
+      {
+        name: "assistant",
+        content: {
+          text: "✅ Message bridged successfully!\n\n**Transaction Details:**\n- Transaction Hash: `0x9876543210fedcba...`\n- From: Ethereum\n- To: zkevm\n- Block Number: 18600000\n- Gas Used: 165000\n- Message ID: `Ethereum-1-77777`\n\n**Message Data:** `0xabcdef1234567890`\n\n**Note:** The message will be available for claiming on the destination chain once the transaction is finalized (typically 30-60 minutes for zkEVM).",
+          actions: ["POLYGON_BRIDGE_MESSAGES_ZKEVM"],
         },
       },
     ],

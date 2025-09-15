@@ -5,18 +5,18 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
-  logger
-} from '@elizaos/core';
-import { JsonRpcProvider, formatUnits, getAddress, isAddress } from 'ethers';
-import { getAccountBalanceTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  logger,
+} from "@elizaos/core";
+import { JsonRpcProvider, formatUnits, getAddress, isAddress } from "ethers";
+import { getAccountBalanceTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 // ERC-20 ABI for balanceOf function
 const ERC20_ABI = [
-  'function balanceOf(address owner) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-  'function name() view returns (string)',
+  "function balanceOf(address owner) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function name() view returns (string)",
 ];
 
 interface TokenBalance {
@@ -33,7 +33,7 @@ interface AccountBalanceResult {
   native: string;
   nativeFormatted: string;
   tokens: TokenBalance[];
-  method: 'alchemy' | 'rpc';
+  method: "alchemy" | "rpc";
   timestamp: number;
 }
 
@@ -42,7 +42,7 @@ interface AccountBalanceResult {
  */
 function validateAndNormalizeAddress(address: string): string {
   if (!address) {
-    throw new Error('Address is required');
+    throw new Error("Address is required");
   }
 
   // Remove any whitespace
@@ -51,7 +51,7 @@ function validateAndNormalizeAddress(address: string): string {
   // Check if it's a valid address format
   if (!isAddress(cleanAddress)) {
     throw new Error(
-      `Invalid address format: ${cleanAddress}. Please provide a valid Ethereum address starting with 0x.`
+      `Invalid address format: ${cleanAddress}. Please provide a valid Ethereum address starting with 0x.`,
     );
   }
 
@@ -60,7 +60,7 @@ function validateAndNormalizeAddress(address: string): string {
     return getAddress(cleanAddress);
   } catch (error) {
     throw new Error(
-      `Invalid address checksum: ${cleanAddress}. Please use the correct capitalization or provide the address in all lowercase.`
+      `Invalid address checksum: ${cleanAddress}. Please use the correct capitalization or provide the address in all lowercase.`,
     );
   }
 }
@@ -70,23 +70,27 @@ function validateAndNormalizeAddress(address: string): string {
  * Retrieves native ETH balance and ERC-20 token balances for a given address
  */
 export const getAccountBalanceAction: Action = {
-  name: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE',
+  name: "POLYGON_ZKEVM_GET_ACCOUNT_BALANCE",
   similes: [
-    'GET_WALLET_BALANCE',
-    'CHECK_ACCOUNT_BALANCE',
-    'ACCOUNT_BALANCE',
-    'WALLET_BALANCE',
-    'GET_TOKEN_BALANCES',
-    'CHECK_TOKENS',
-    'BALANCE_CHECK',
-    'GET_ALL_BALANCES',
+    "GET_WALLET_BALANCE",
+    "CHECK_ACCOUNT_BALANCE",
+    "ACCOUNT_BALANCE",
+    "WALLET_BALANCE",
+    "GET_TOKEN_BALANCES",
+    "CHECK_TOKENS",
+    "BALANCE_CHECK",
+    "GET_ALL_BALANCES",
   ].map((s) => `POLYGON_ZKEVM_${s}`),
   description:
-    'Get comprehensive account balance including native ETH and ERC-20 token balances for a Polygon zkEVM address',
+    "Get comprehensive account balance including native ETH and ERC-20 token balances for a Polygon zkEVM address",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
@@ -100,24 +104,33 @@ export const getAccountBalanceAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[getAccountBalanceAction] Handler called!');
+    logger.info("[getAccountBalanceAction] Handler called!");
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-      logger.error(`[getAccountBalanceAction] Configuration error: ${errorMessage}`);
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+      logger.error(
+        `[getAccountBalanceAction] Configuration error: ${errorMessage}`,
+      );
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { accountBalanceRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_ACCOUNT_BALANCE",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -126,87 +139,111 @@ export const getAccountBalanceAction: Action = {
 
     // Extract address using LLM with OBJECT_LARGE model
     try {
-      addressInput = await callLLMWithTimeout<{ address: string; error?: string }>(
-        runtime,
-        state,
-        getAccountBalanceTemplate,
-        'getAccountBalanceAction'
-      );
+      addressInput = await callLLMWithTimeout<{
+        address: string;
+        error?: string;
+      }>(runtime, state, getAccountBalanceTemplate, "getAccountBalanceAction");
 
       if (addressInput?.error) {
-        logger.error('[getAccountBalanceAction] LLM returned an error:', addressInput?.error);
+        logger.error(
+          "[getAccountBalanceAction] LLM returned an error:",
+          addressInput?.error,
+        );
         throw new Error(addressInput?.error);
       }
 
-      if (!addressInput?.address || typeof addressInput.address !== 'string') {
-        throw new Error('Invalid address received from LLM.');
+      if (!addressInput?.address || typeof addressInput.address !== "string") {
+        throw new Error("Invalid address received from LLM.");
       }
     } catch (error) {
       logger.debug(
-        '[getAccountBalanceAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error.message : String(error)
+        "[getAccountBalanceAction] OBJECT_LARGE model failed",
+        error instanceof Error ? error.message : String(error),
       );
       const errorMessage = `[getAccountBalanceAction] Failed to extract address from input: ${error instanceof Error ? error.message : String(error)}`;
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { accountBalanceRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_ACCOUNT_BALANCE",
+          error: errorMessage,
+        },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
 
     const address = addressInput.address;
-    logger.info(`[getAccountBalanceAction] Getting account balance for address: ${address}`);
+    logger.info(
+      `[getAccountBalanceAction] Getting account balance for address: ${address}`,
+    );
 
     // Validate and normalize the address
     let validatedAddress: string;
     try {
       validatedAddress = validateAndNormalizeAddress(address);
-      logger.info(`[getAccountBalanceAction] Address validated: ${validatedAddress}`);
+      logger.info(
+        `[getAccountBalanceAction] Address validated: ${validatedAddress}`,
+      );
     } catch (error) {
       const errorMessage = `Invalid address: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMessage);
       if (callback) {
-        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
+        await callback({
+          text: `❌ ${errorMessage}`,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { accountBalanceRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_ACCOUNT_BALANCE",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
 
     // Setup provider - prefer Alchemy, fallback to RPC
     let provider: JsonRpcProvider;
-    let methodUsed: 'alchemy' | 'rpc' = 'rpc';
+    let methodUsed: "alchemy" | "rpc" = "rpc";
     const zkevmAlchemyUrl =
-      runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+      runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+      "https://polygonzkevm-mainnet.g.alchemy.com/v2";
 
     if (alchemyApiKey) {
       provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
-      methodUsed = 'alchemy';
-      logger.info('[getAccountBalanceAction] Using Alchemy API for account balance');
+      methodUsed = "alchemy";
+      logger.info(
+        "[getAccountBalanceAction] Using Alchemy API for account balance",
+      );
     } else {
       provider = new JsonRpcProvider(zkevmRpcUrl);
-      logger.info('[getAccountBalanceAction] Using direct RPC for account balance');
+      logger.info(
+        "[getAccountBalanceAction] Using direct RPC for account balance",
+      );
     }
 
-    let nativeBalance = '0';
+    let nativeBalance = "0";
     const tokenBalances: TokenBalance[] = [];
     let errorMessages: string[] = [];
 
     // Get native ETH balance
     try {
-      logger.info('[getAccountBalanceAction] Fetching native ETH balance...');
+      logger.info("[getAccountBalanceAction] Fetching native ETH balance...");
       const balance = await provider.getBalance(validatedAddress);
       nativeBalance = balance.toString();
-      logger.info(`[getAccountBalanceAction] Native balance retrieved: ${nativeBalance} wei`);
+      logger.info(
+        `[getAccountBalanceAction] Native balance retrieved: ${nativeBalance} wei`,
+      );
     } catch (error) {
       const errorMsg = `Failed to get native balance: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMsg);
@@ -233,10 +270,13 @@ export const getAccountBalanceAction: Action = {
 **Native Balance:** ${nativeFormatted} ETH
 **Method:** ${methodUsed}
 
-${errorMessages.length > 0 ? `\n**Warnings:**\n${errorMessages.map((msg) => `- ${msg}`).join('\n')}` : ''}`;
+${errorMessages.length > 0 ? `\n**Warnings:**\n${errorMessages.map((msg) => `- ${msg}`).join("\n")}` : ""}`;
 
     if (callback) {
-      await callback({ text: responseText, content: { success: true, address: validatedAddress } });
+      await callback({
+        text: responseText,
+        content: { success: true, address: validatedAddress },
+      });
     }
 
     return {
@@ -244,9 +284,9 @@ ${errorMessages.length > 0 ? `\n**Warnings:**\n${errorMessages.map((msg) => `- $
       text: responseText,
       values: { accountBalanceRetrieved: true, address: validatedAddress },
       data: {
-        actionName: 'POLYGON_ZKEVM_GET_ACCOUNT_BALANCE',
+        actionName: "POLYGON_ZKEVM_GET_ACCOUNT_BALANCE",
         result,
-        network: 'polygon-zkevm',
+        network: "polygon-zkevm",
         timestamp: Date.now(),
         method: methodUsed,
       },
@@ -256,31 +296,31 @@ ${errorMessages.length > 0 ? `\n**Warnings:**\n${errorMessages.map((msg) => `- $
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Get balance for address 0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6 on Polygon zkEVM',
+          text: "Get balance for address 0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6 on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: "I'll get the account balance for that address on Polygon zkEVM.",
-          action: 'POLYGON_GET_ACCOUNT_BALANCE_ZKEVM',
+          action: "POLYGON_GET_ACCOUNT_BALANCE_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'check my wallet balance on Polygon zkEVM',
+          text: "check my wallet balance on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: 'I can do that. Please provide your wallet address.',
-          action: 'POLYGON_GET_ACCOUNT_BALANCE_ZKEVM',
+          text: "I can do that. Please provide your wallet address.",
+          action: "POLYGON_GET_ACCOUNT_BALANCE_ZKEVM",
         },
       },
     ],

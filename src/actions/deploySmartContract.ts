@@ -5,29 +5,33 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
-  logger
-} from '@elizaos/core';
-import { JsonRpcProvider, Wallet, parseEther, parseUnits } from 'ethers';
-import { deploySmartContractTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  logger,
+} from "@elizaos/core";
+import { JsonRpcProvider, Wallet, parseEther, parseUnits } from "ethers";
+import { deploySmartContractTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 export const deploySmartContractAction: Action = {
-  name: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT',
+  name: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
   similes: [
-    'DEPLOY_CONTRACT',
-    'DEPLOY_ZKEVM_CONTRACT',
-    'CREATE_CONTRACT',
-    'DEPLOY_SMART_CONTRACT_ZKEVM',
-    'CREATE_SMART_CONTRACT',
-    'PUBLISH_CONTRACT',
-    'DEPLOY_CONTRACT_ZKEVM',
+    "DEPLOY_CONTRACT",
+    "DEPLOY_ZKEVM_CONTRACT",
+    "CREATE_CONTRACT",
+    "DEPLOY_SMART_CONTRACT_ZKEVM",
+    "CREATE_SMART_CONTRACT",
+    "PUBLISH_CONTRACT",
+    "DEPLOY_CONTRACT_ZKEVM",
   ].map((s) => `POLYGON_ZKEVM_${s}`),
   description:
-    'Deploys a smart contract to Polygon zkEVM using bytecode and optional constructor arguments.',
+    "Deploys a smart contract to Polygon zkEVM using bytecode and optional constructor arguments.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
@@ -41,40 +45,57 @@ export const deploySmartContractAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[deploySmartContractAction] Handler called!');
+    logger.info("[deploySmartContractAction] Handler called!");
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
-    const privateKey = runtime.getSetting('PRIVATE_KEY');
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
+    const privateKey = runtime.getSetting("PRIVATE_KEY");
 
     if (!privateKey) {
-      const errorMessage = 'PRIVATE_KEY is required for contract deployment.';
-      logger.error(`[deploySmartContractAction] Configuration error: ${errorMessage}`);
+      const errorMessage = "PRIVATE_KEY is required for contract deployment.";
+      logger.error(
+        `[deploySmartContractAction] Configuration error: ${errorMessage}`,
+      );
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { contractDeployed: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-      logger.error(`[deploySmartContractAction] Configuration error: ${errorMessage}`);
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+      logger.error(
+        `[deploySmartContractAction] Configuration error: ${errorMessage}`,
+      );
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { contractDeployed: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -82,7 +103,7 @@ export const deploySmartContractAction: Action = {
     let deploymentParams: any | null = null;
     let contractAddress: string | null = null;
     let transactionHash: string | null = null;
-    let methodUsed: 'alchemy' | 'rpc' | null = null;
+    let methodUsed: "alchemy" | "rpc" | null = null;
     let errorMessages: string[] = [];
 
     // Extract deployment parameters using LLM with OBJECT_LARGE model
@@ -96,56 +117,76 @@ export const deploySmartContractAction: Action = {
         maxPriorityFeePerGas?: string;
         value?: string;
         error?: string;
-      }>(runtime, state, deploySmartContractTemplate, 'deploySmartContractAction');
+      }>(
+        runtime,
+        state,
+        deploySmartContractTemplate,
+        "deploySmartContractAction",
+      );
 
       if (deploymentParams?.error) {
-        logger.error('[deploySmartContractAction] LLM returned an error:', deploymentParams?.error);
+        logger.error(
+          "[deploySmartContractAction] LLM returned an error:",
+          deploymentParams?.error,
+        );
         throw new Error(deploymentParams?.error);
       }
 
       if (!deploymentParams?.bytecode) {
         throw new Error(
-          'No valid bytecode extracted from input. Please provide bytecode starting with 0x.'
+          "No valid bytecode extracted from input. Please provide bytecode starting with 0x.",
         );
       }
 
       logger.info(
-        `[deploySmartContractAction] Extracted bytecode: ${deploymentParams.bytecode.substring(0, 50)}...`
+        `[deploySmartContractAction] Extracted bytecode: ${deploymentParams.bytecode.substring(0, 50)}...`,
       );
     } catch (error) {
       logger.error(
-        '[deploySmartContractAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error.message : String(error)
+        "[deploySmartContractAction] OBJECT_LARGE model failed",
+        error instanceof Error ? error.message : String(error),
       );
       const errorMessage = `[deploySmartContractAction] Failed to extract deployment parameters from input: ${error instanceof Error ? error.message : String(error)}`;
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { contractDeployed: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
+          error: errorMessage,
+        },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
 
     // Determine RPC URL
     const rpcUrl = alchemyApiKey
-      ? `${runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2'}/${alchemyApiKey}`
+      ? `${runtime.getSetting("ZKEVM_ALCHEMY_URL") || "https://polygonzkevm-mainnet.g.alchemy.com/v2"}/${alchemyApiKey}`
       : zkevmRpcUrl;
 
     if (!rpcUrl) {
-      const errorMessage = 'Unable to determine RPC URL for deployment.';
+      const errorMessage = "Unable to determine RPC URL for deployment.";
       logger.error(`[deploySmartContractAction] ${errorMessage}`);
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { contractDeployed: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -163,15 +204,18 @@ export const deploySmartContractAction: Action = {
       };
 
       // Add constructor arguments if provided
-      if (deploymentParams.constructorArgs && deploymentParams.constructorArgs.length > 0) {
+      if (
+        deploymentParams.constructorArgs &&
+        deploymentParams.constructorArgs.length > 0
+      ) {
         // Note: In a real implementation, you'd need to properly encode constructor args
         // This is a simplified version - in practice you'd use ethers AbiCoder
         logger.info(
-          `[deploySmartContractAction] Constructor args provided: ${JSON.stringify(deploymentParams.constructorArgs)}`
+          `[deploySmartContractAction] Constructor args provided: ${JSON.stringify(deploymentParams.constructorArgs)}`,
         );
         // For now, we'll log this but not implement full ABI encoding
         logger.warn(
-          '[deploySmartContractAction] Constructor argument encoding not fully implemented - deploying without args'
+          "[deploySmartContractAction] Constructor argument encoding not fully implemented - deploying without args",
         );
       }
 
@@ -188,31 +232,42 @@ export const deploySmartContractAction: Action = {
         try {
           const estimatedGas = await provider.estimateGas(transactionData);
           transactionData.gasLimit = estimatedGas;
-          logger.info(`[deploySmartContractAction] Estimated gas: ${estimatedGas.toString()}`);
+          logger.info(
+            `[deploySmartContractAction] Estimated gas: ${estimatedGas.toString()}`,
+          );
         } catch (gasError) {
           logger.warn(
-            `[deploySmartContractAction] Gas estimation failed, using default: ${gasError}`
+            `[deploySmartContractAction] Gas estimation failed, using default: ${gasError}`,
           );
-          transactionData.gasLimit = BigInt('3000000'); // Default gas limit for contract deployment
+          transactionData.gasLimit = BigInt("3000000"); // Default gas limit for contract deployment
         }
       }
 
       // Handle gas pricing (EIP-1559 vs legacy)
-      if (deploymentParams.maxFeePerGas || deploymentParams.maxPriorityFeePerGas) {
+      if (
+        deploymentParams.maxFeePerGas ||
+        deploymentParams.maxPriorityFeePerGas
+      ) {
         // EIP-1559 transaction
         if (deploymentParams.maxFeePerGas) {
-          transactionData.maxFeePerGas = parseUnits(deploymentParams.maxFeePerGas, 'gwei');
+          transactionData.maxFeePerGas = parseUnits(
+            deploymentParams.maxFeePerGas,
+            "gwei",
+          );
         }
         if (deploymentParams.maxPriorityFeePerGas) {
           transactionData.maxPriorityFeePerGas = parseUnits(
             deploymentParams.maxPriorityFeePerGas,
-            'gwei'
+            "gwei",
           );
         }
         transactionData.type = 2; // EIP-1559
       } else if (deploymentParams.gasPrice) {
         // Legacy transaction
-        transactionData.gasPrice = parseUnits(deploymentParams.gasPrice, 'gwei');
+        transactionData.gasPrice = parseUnits(
+          deploymentParams.gasPrice,
+          "gwei",
+        );
         transactionData.type = 0; // Legacy
       } else {
         // Use current gas price
@@ -227,7 +282,9 @@ export const deploySmartContractAction: Action = {
             transactionData.type = 0;
           }
         } catch (feeError) {
-          logger.warn(`[deploySmartContractAction] Fee data fetch failed: ${feeError}`);
+          logger.warn(
+            `[deploySmartContractAction] Fee data fetch failed: ${feeError}`,
+          );
         }
       }
 
@@ -235,25 +292,29 @@ export const deploySmartContractAction: Action = {
       const deploymentTx = await wallet.sendTransaction(transactionData);
       transactionHash = deploymentTx.hash;
 
-      logger.info(`[deploySmartContractAction] Deployment transaction sent: ${transactionHash}`);
+      logger.info(
+        `[deploySmartContractAction] Deployment transaction sent: ${transactionHash}`,
+      );
 
       // Wait for the transaction to be mined
       const receipt = await deploymentTx.wait();
 
       if (receipt && receipt.contractAddress) {
         contractAddress = receipt.contractAddress;
-        methodUsed = alchemyApiKey ? 'alchemy' : 'rpc';
+        methodUsed = alchemyApiKey ? "alchemy" : "rpc";
 
         logger.info(
-          `[deploySmartContractAction] Contract deployed successfully at: ${contractAddress}`
+          `[deploySmartContractAction] Contract deployed successfully at: ${contractAddress}`,
         );
       } else {
-        throw new Error('Contract deployment failed - no contract address in receipt');
+        throw new Error(
+          "Contract deployment failed - no contract address in receipt",
+        );
       }
     } catch (error) {
       logger.error(`[deploySmartContractAction] Deployment failed:`, error);
       errorMessages.push(
-        `Deployment failed: ${error instanceof Error ? error.message : String(error)}`
+        `Deployment failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -262,7 +323,10 @@ export const deploySmartContractAction: Action = {
       const successText = `✅ Smart contract deployed successfully to Polygon zkEVM!\n\n**Contract Address:** \`${contractAddress}\`\n**Transaction Hash:** \`${transactionHash}\`\n**Method Used:** ${methodUsed}\n**Network:** Polygon zkEVM\n\nYou can now interact with your new contract.`;
 
       if (callback) {
-        await callback({ text: successText, content: { success: true, transactionHash, contractAddress } });
+        await callback({
+          text: successText,
+          content: { success: true, transactionHash, contractAddress },
+        });
       }
 
       return {
@@ -270,10 +334,10 @@ export const deploySmartContractAction: Action = {
         text: successText,
         values: { contractDeployed: true, transactionHash, contractAddress },
         data: {
-          actionName: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT',
+          actionName: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
           contractAddress,
           transactionHash,
-          network: 'polygon-zkevm',
+          network: "polygon-zkevm",
           timestamp: Date.now(),
           method: methodUsed,
           deploymentParams: {
@@ -286,15 +350,27 @@ export const deploySmartContractAction: Action = {
       };
     } else {
       // Deployment failed
-      const finalErrorMessage = `Failed to deploy smart contract. Errors: ${errorMessages.join('; ')}`;
+      const finalErrorMessage = `Failed to deploy smart contract. Errors: ${errorMessages.join("; ")}`;
       if (callback) {
-        await callback({ text: `❌ ${finalErrorMessage}`, content: { success: false, error: finalErrorMessage } });
+        await callback({
+          text: `❌ ${finalErrorMessage}`,
+          content: { success: false, error: finalErrorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${finalErrorMessage}`,
-        values: { contractDeployed: false, error: true, errorMessage: finalErrorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT', error: finalErrorMessage, errors: errorMessages, deploymentParams },
+        values: {
+          contractDeployed: false,
+          error: true,
+          errorMessage: finalErrorMessage,
+        },
+        data: {
+          actionName: "POLYGON_ZKEVM_DEPLOY_SMART_CONTRACT",
+          error: finalErrorMessage,
+          errors: errorMessages,
+          deploymentParams,
+        },
         error: new Error(finalErrorMessage),
       };
     }
@@ -303,31 +379,31 @@ export const deploySmartContractAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Deploy a smart contract on Polygon zkEVM with bytecode 0x6080...',
+          text: "Deploy a smart contract on Polygon zkEVM with bytecode 0x6080...",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: '✅ Smart contract deployed successfully to Polygon zkEVM! Contract Address: 0xabc...',
-          action: 'POLYGON_DEPLOY_SMART_CONTRACT_ZKEVM',
+          text: "✅ Smart contract deployed successfully to Polygon zkEVM! Contract Address: 0xabc...",
+          action: "POLYGON_DEPLOY_SMART_CONTRACT_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
           text: 'Create a new contract on Polygon zkEVM using bytecode 0x6080... and constructor args ["MyToken", "TKN"]',
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: 'I will deploy the smart contract with the provided bytecode and constructor arguments to Polygon zkEVM.',
-          action: 'POLYGON_DEPLOY_SMART_CONTRACT_ZKEVM',
+          text: "I will deploy the smart contract with the provided bytecode and constructor arguments to Polygon zkEVM.",
+          action: "POLYGON_DEPLOY_SMART_CONTRACT_ZKEVM",
         },
       },
     ],

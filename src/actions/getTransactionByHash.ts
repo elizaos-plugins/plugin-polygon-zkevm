@@ -5,26 +5,33 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
-  logger
-} from '@elizaos/core';
-import { JsonRpcProvider } from 'ethers';
-import { getTransactionByHashTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  logger,
+} from "@elizaos/core";
+import { JsonRpcProvider } from "ethers";
+import { getTransactionByHashTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 /**
  * Get transaction by hash action for Polygon zkEVM
  * Retrieves transaction details by transaction hash
  */
 export const getTransactionByHashAction: Action = {
-  name: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH',
-  similes: ['GET_TX_BY_HASH', 'GET_TRANSACTION', 'TRANSACTION_DETAILS', 'TX_DETAILS'].map(
-    (s) => `POLYGON_ZKEVM_${s}`
-  ),
-  description: 'Gets transaction details for a given hash on Polygon zkEVM.',
+  name: "POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH",
+  similes: [
+    "GET_TX_BY_HASH",
+    "GET_TRANSACTION",
+    "TRANSACTION_DETAILS",
+    "TX_DETAILS",
+  ].map((s) => `POLYGON_ZKEVM_${s}`),
+  description: "Gets transaction details for a given hash on Polygon zkEVM.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
@@ -38,25 +45,34 @@ export const getTransactionByHashAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      logger.info('[getTransactionByHashAction] Handler called!');
+      logger.info("[getTransactionByHashAction] Handler called!");
 
-      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-      const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+      const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+      const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
       if (!alchemyApiKey && !zkevmRpcUrl) {
-        const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-        logger.error(`[getTransactionByHashAction] Configuration error: ${errorMessage}`);
+        const errorMessage =
+          "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+        logger.error(
+          `[getTransactionByHashAction] Configuration error: ${errorMessage}`,
+        );
         if (callback) {
-          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+          await callback({
+            text: errorMessage,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { txRetrieved: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage },
+          data: {
+            actionName: "POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH",
+            error: errorMessage,
+          },
           error: new Error(errorMessage),
         };
       }
@@ -65,35 +81,50 @@ export const getTransactionByHashAction: Action = {
 
       // Extract transaction hash using LLM with OBJECT_LARGE model
       try {
-        hashInput = await callLLMWithTimeout<{ transactionHash: string; error?: string }>(
+        hashInput = await callLLMWithTimeout<{
+          transactionHash: string;
+          error?: string;
+        }>(
           runtime,
           state,
           getTransactionByHashTemplate,
-          'getTransactionByHashAction'
+          "getTransactionByHashAction",
         );
 
         if (hashInput?.error) {
-          logger.error('[getTransactionByHashAction] LLM returned an error:', hashInput?.error);
+          logger.error(
+            "[getTransactionByHashAction] LLM returned an error:",
+            hashInput?.error,
+          );
           throw new Error(hashInput?.error);
         }
 
-        if (!hashInput?.transactionHash || typeof hashInput.transactionHash !== 'string') {
-          throw new Error('Invalid transaction hash received from LLM.');
+        if (
+          !hashInput?.transactionHash ||
+          typeof hashInput.transactionHash !== "string"
+        ) {
+          throw new Error("Invalid transaction hash received from LLM.");
         }
       } catch (error) {
         logger.error(
-          '[getTransactionByHashAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error.message : String(error)
+          "[getTransactionByHashAction] OBJECT_LARGE model failed",
+          error instanceof Error ? error.message : String(error),
         );
         const errorMessage = `[getTransactionByHashAction] Failed to extract transaction hash from input: ${error instanceof Error ? error.message : String(error)}`;
         if (callback) {
-          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+          await callback({
+            text: errorMessage,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { txRetrieved: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage },
+          data: {
+            actionName: "POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH",
+            error: errorMessage,
+          },
           error: error instanceof Error ? error : new Error(String(error)),
         };
       }
@@ -103,7 +134,8 @@ export const getTransactionByHashAction: Action = {
       // Setup provider - prefer Alchemy, fallback to RPC
       let provider: JsonRpcProvider;
       const zkevmAlchemyUrl =
-        runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+        runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+        "https://polygonzkevm-mainnet.g.alchemy.com/v2";
 
       if (alchemyApiKey) {
         provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
@@ -117,45 +149,57 @@ export const getTransactionByHashAction: Action = {
       if (!transaction) {
         const errorMessage = `Transaction not found: ${txHash}`;
         if (callback) {
-          await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
+          await callback({
+            text: `❌ ${errorMessage}`,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { txRetrieved: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage, txHash },
+          data: {
+            actionName: "POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH",
+            error: errorMessage,
+            txHash,
+          },
           error: new Error(errorMessage),
         };
       }
 
       // Format transaction details
       const valueInEth = Number(transaction.value) / 1e18;
-      const gasPriceInGwei = transaction.gasPrice ? Number(transaction.gasPrice) / 1e9 : 'N/A';
+      const gasPriceInGwei = transaction.gasPrice
+        ? Number(transaction.gasPrice) / 1e9
+        : "N/A";
 
       const responseText = `🔍 **Transaction Details (Polygon zkEVM)**
 
 **Basic Information:**
 - Hash: \`${transaction.hash}\`
-- Block Number: ${transaction.blockNumber || 'Pending'}
-- Block Hash: \`${transaction.blockHash || 'Pending'}\`
-- Transaction Index: ${transaction.index !== null ? transaction.index : 'Pending'}
+- Block Number: ${transaction.blockNumber || "Pending"}
+- Block Hash: \`${transaction.blockHash || "Pending"}\`
+- Transaction Index: ${transaction.index !== null ? transaction.index : "Pending"}
 
 **Transaction Data:**
 - From: \`${transaction.from}\`
-- To: \`${transaction.to || 'Contract Creation'}\`
+- To: \`${transaction.to || "Contract Creation"}\`
 - Value: ${valueInEth} ETH
-- Gas Limit: ${transaction.gasLimit?.toString() || 'N/A'}
+- Gas Limit: ${transaction.gasLimit?.toString() || "N/A"}
 - Gas Price: ${gasPriceInGwei} Gwei
 - Nonce: ${transaction.nonce}
 
 **Status:**
 - Confirmations: ${transaction.confirmations || 0}
-- Type: ${transaction.type || 'Legacy'}
+- Type: ${transaction.type || "Legacy"}
 
-${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.data.slice(0, 100)}${transaction.data.length > 100 ? '...' : ''}\`` : ''}`;
+${transaction.data && transaction.data !== "0x" ? `**Data:** \`${transaction.data.slice(0, 100)}${transaction.data.length > 100 ? "..." : ""}\`` : ""}`;
 
       if (callback) {
-        await callback({ text: responseText, content: { success: true, hash: transaction.hash } });
+        await callback({
+          text: responseText,
+          content: { success: true, hash: transaction.hash },
+        });
       }
 
       return {
@@ -163,7 +207,7 @@ ${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.dat
         text: responseText,
         values: { txRetrieved: true, txHash: transaction.hash },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH',
+          actionName: "POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH",
           transaction: {
             hash: transaction.hash,
             blockNumber: transaction.blockNumber,
@@ -178,7 +222,7 @@ ${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.dat
             type: transaction.type,
             data: transaction.data,
           },
-          network: 'polygon-zkevm',
+          network: "polygon-zkevm",
         },
       };
     } catch (error) {
@@ -186,14 +230,20 @@ ${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.dat
       logger.error(errorMessage);
 
       if (callback) {
-        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
+        await callback({
+          text: `❌ ${errorMessage}`,
+          content: { success: false, error: errorMessage },
+        });
       }
 
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { txRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_TRANSACTION_BY_HASH",
+          error: errorMessage,
+        },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
@@ -202,31 +252,31 @@ ${transaction.data && transaction.data !== '0x' ? `**Data:** \`${transaction.dat
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Get details for transaction 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef on Polygon zkEVM',
+          text: "Get details for transaction 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: "I'll get the transaction details for that hash on Polygon zkEVM.",
-          action: 'POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM',
+          action: "POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Show me transaction 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890 on Polygon zkEVM',
+          text: "Show me transaction 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890 on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: 'Let me fetch the details for that transaction on Polygon zkEVM.',
-          action: 'POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM',
+          text: "Let me fetch the details for that transaction on Polygon zkEVM.",
+          action: "POLYGON_GET_TRANSACTION_BY_HASH_ZKEVM",
         },
       },
     ],

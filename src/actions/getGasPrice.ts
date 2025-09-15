@@ -7,23 +7,29 @@ import {
   ModelType,
   type State,
   composePromptFromState,
-  logger
-} from '@elizaos/core';
-import { JsonRpcProvider } from 'ethers';
-import { getGasPriceTemplate } from '../templates';
+  logger,
+} from "@elizaos/core";
+import { JsonRpcProvider } from "ethers";
+import { getGasPriceTemplate } from "../templates";
 
 /**
  * Get gas price action for Polygon zkEVM
  * Retrieves current gas price
  */
 export const getGasPriceAction: Action = {
-  name: 'POLYGON_ZKEVM_GET_GAS_PRICE',
-  similes: ['GAS_PRICE', 'CURRENT_GAS', 'GAS_FEE', 'GWEI'].map((s) => `POLYGON_ZKEVM_${s}`),
-  description: 'Get current gas price on Polygon zkEVM',
+  name: "POLYGON_ZKEVM_GET_GAS_PRICE",
+  similes: ["GAS_PRICE", "CURRENT_GAS", "GAS_FEE", "GWEI"].map(
+    (s) => `POLYGON_ZKEVM_${s}`,
+  ),
+  description: "Get current gas price on Polygon zkEVM",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
@@ -37,24 +43,25 @@ export const getGasPriceAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[getGasPriceAction] Handler called!');
+    logger.info("[getGasPriceAction] Handler called!");
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
       logger.error(`[getGasPriceAction] Configuration error: ${errorMessage}`);
-      
+
       if (callback) {
         callback({
           text: errorMessage,
           content: { error: errorMessage, success: false },
         });
       }
-      
+
       return {
         success: false,
         text: `❌ ${errorMessage}`,
@@ -64,7 +71,7 @@ export const getGasPriceAction: Action = {
           errorMessage,
         },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_GAS_PRICE',
+          actionName: "POLYGON_ZKEVM_GET_GAS_PRICE",
           error: errorMessage,
         },
         error: new Error(errorMessage),
@@ -84,25 +91,28 @@ export const getGasPriceAction: Action = {
         throw new Error(gasRequestInput.error);
       }
     } catch (error) {
-      logger.debug('[getGasPriceAction] LLM validation failed, proceeding anyway');
+      logger.debug(
+        "[getGasPriceAction] LLM validation failed, proceeding anyway",
+      );
     }
 
     // Setup provider - prefer Alchemy, fallback to RPC
     let provider: JsonRpcProvider;
-    let methodUsed: 'alchemy' | 'rpc' = 'rpc';
+    let methodUsed: "alchemy" | "rpc" = "rpc";
     const zkevmAlchemyUrl =
-      runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+      runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+      "https://polygonzkevm-mainnet.g.alchemy.com/v2";
 
     if (alchemyApiKey) {
       provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
-      methodUsed = 'alchemy';
+      methodUsed = "alchemy";
     } else {
       provider = new JsonRpcProvider(zkevmRpcUrl);
     }
 
     try {
       // Get gas price
-      const gasPrice = await provider.send('eth_gasPrice', []);
+      const gasPrice = await provider.send("eth_gasPrice", []);
       const gasPriceInWei = BigInt(gasPrice);
       const gasPriceInGwei = Number(gasPriceInWei) / 1e9;
 
@@ -111,7 +121,7 @@ export const getGasPriceAction: Action = {
       try {
         feeData = await provider.getFeeData();
       } catch (error) {
-        logger.warn('Could not get fee data, using basic gas price only');
+        logger.warn("Could not get fee data, using basic gas price only");
       }
 
       let responseText = `⛽ **Current Gas Price (Polygon zkEVM)**
@@ -138,48 +148,48 @@ export const getGasPriceAction: Action = {
 📤 Simple Transfer: ~${transferCost.toFixed(6)} ETH
 🔄 Token Swap: ~${swapCost.toFixed(6)} ETH`;
 
-    if (callback) {
-      callback({
+      if (callback) {
+        callback({
+          text: responseText,
+          content: {
+            success: true,
+            gasPrice: gasPriceInWei.toString(),
+            gasPriceGwei: gasPriceInGwei,
+            network: "polygon-zkevm",
+            method: methodUsed,
+          },
+        });
+      }
+
+      return {
+        success: true,
         text: responseText,
-        content: {
-          success: true,
+        values: {
+          gasPriceRetrieved: true,
+          gasPriceGwei: gasPriceInGwei,
+        },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_GAS_PRICE",
           gasPrice: gasPriceInWei.toString(),
           gasPriceGwei: gasPriceInGwei,
-          network: 'polygon-zkevm',
+          feeData,
+          network: "polygon-zkevm",
           method: methodUsed,
+          transferCostEth: transferCost,
+          swapCostEth: swapCost,
         },
-      });
-    }
-
-    return {
-      success: true,
-      text: responseText,
-      values: {
-        gasPriceRetrieved: true,
-        gasPriceGwei: gasPriceInGwei,
-      },
-      data: {
-        actionName: 'POLYGON_ZKEVM_GET_GAS_PRICE',
-        gasPrice: gasPriceInWei.toString(),
-        gasPriceGwei: gasPriceInGwei,
-        feeData,
-        network: 'polygon-zkevm',
-        method: methodUsed,
-        transferCostEth: transferCost,
-        swapCostEth: swapCost,
-      },
-    };
+      };
     } catch (error) {
       const errorMessage = `Failed to retrieve gas price: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(`[getGasPriceAction] ${errorMessage}`);
-      
+
       if (callback) {
         callback({
           text: errorMessage,
           content: { error: errorMessage, success: false },
         });
       }
-      
+
       return {
         success: false,
         text: `❌ ${errorMessage}`,
@@ -189,7 +199,7 @@ export const getGasPriceAction: Action = {
           errorMessage,
         },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_GAS_PRICE',
+          actionName: "POLYGON_ZKEVM_GET_GAS_PRICE",
           error: errorMessage,
         },
         error: error instanceof Error ? error : new Error(String(error)),
@@ -200,16 +210,16 @@ export const getGasPriceAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'What is the current gas price on Polygon zkEVM?',
+          text: "What is the current gas price on Polygon zkEVM?",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: "I'll get the current gas price for Polygon zkEVM.",
-          action: 'POLYGON_GET_GAS_PRICE_ZKEVM',
+          action: "POLYGON_GET_GAS_PRICE_ZKEVM",
         },
       },
     ],

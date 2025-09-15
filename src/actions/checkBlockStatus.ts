@@ -5,14 +5,14 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
-  logger
-} from '@elizaos/core';
-import { JsonRpcProvider } from 'ethers';
-import { checkBlockStatusTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  logger,
+} from "@elizaos/core";
+import { JsonRpcProvider } from "ethers";
+import { checkBlockStatusTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 // Block status types for Polygon zkEVM
-type BlockStatus = 'trusted' | 'virtual' | 'consolidated' | 'unknown';
+type BlockStatus = "trusted" | "virtual" | "consolidated" | "unknown";
 
 interface BlockStatusResult {
   blockNumber: number;
@@ -20,7 +20,7 @@ interface BlockStatusResult {
   status: BlockStatus;
   statusCode?: number;
   description: string;
-  method: 'alchemy' | 'rpc';
+  method: "alchemy" | "rpc";
   timestamp: number;
 }
 
@@ -29,45 +29,52 @@ interface BlockStatusResult {
  * Determines whether a block is trusted, virtual, or consolidated
  */
 export const checkBlockStatusAction: Action = {
-  name: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS',
+  name: "POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS",
   similes: [
-    'CHECK_BLOCK_STATUS',
-    'BLOCK_STATUS',
-    'L2_BLOCK_STATUS',
-    'BLOCK_FINALITY',
-    'CHECK_FINALITY',
-    'BLOCK_STATE',
-    'VERIFY_BLOCK',
-    'BLOCK_CONFIRMATION',
+    "CHECK_BLOCK_STATUS",
+    "BLOCK_STATUS",
+    "L2_BLOCK_STATUS",
+    "BLOCK_FINALITY",
+    "CHECK_FINALITY",
+    "BLOCK_STATE",
+    "VERIFY_BLOCK",
+    "BLOCK_CONFIRMATION",
   ].map((s) => `POLYGON_ZKEVM_${s}`),
-  description: 'Check the status of a Polygon zkEVM block (trusted, virtual, or consolidated)',
+  description:
+    "Check the status of a Polygon zkEVM block (trusted, virtual, or consolidated)",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
     }
 
     // Check if the message is specifically about block status/finality
-    const content = message.content?.text?.toLowerCase() || '';
+    const content = message.content?.text?.toLowerCase() || "";
     const statusKeywords = [
-      'status',
-      'finality',
-      'trusted',
-      'virtual',
-      'consolidated',
-      'confirmed',
-      'confirmation',
-      'verify',
-      'check status',
-      'block status',
-      'finalized',
+      "status",
+      "finality",
+      "trusted",
+      "virtual",
+      "consolidated",
+      "confirmed",
+      "confirmation",
+      "verify",
+      "check status",
+      "block status",
+      "finalized",
     ];
 
-    const hasStatusKeyword = statusKeywords.some((keyword) => content.includes(keyword));
-    const hasBlockKeyword = content.includes('block');
+    const hasStatusKeyword = statusKeywords.some((keyword) =>
+      content.includes(keyword),
+    );
+    const hasBlockKeyword = content.includes("block");
 
     // Only match if both block and status-related keywords are present
     return hasBlockKeyword && hasStatusKeyword;
@@ -78,25 +85,34 @@ export const checkBlockStatusAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      logger.info('[checkBlockStatusAction] Handler called!');
+      logger.info("[checkBlockStatusAction] Handler called!");
 
-      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-      const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+      const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+      const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
       if (!alchemyApiKey && !zkevmRpcUrl) {
-        const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-        logger.error(`[checkBlockStatusAction] Configuration error: ${errorMessage}`);
+        const errorMessage =
+          "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+        logger.error(
+          `[checkBlockStatusAction] Configuration error: ${errorMessage}`,
+        );
         if (callback) {
-          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+          await callback({
+            text: errorMessage,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { blockStatusChecked: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS', error: errorMessage },
+          data: {
+            actionName: "POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS",
+            error: errorMessage,
+          },
           error: new Error(errorMessage),
         };
       }
@@ -109,30 +125,39 @@ export const checkBlockStatusAction: Action = {
           blockNumber?: number;
           blockHash?: string;
           error?: string;
-        }>(runtime, state, checkBlockStatusTemplate, 'checkBlockStatusAction');
+        }>(runtime, state, checkBlockStatusTemplate, "checkBlockStatusAction");
 
         if (blockInput?.error) {
-          logger.error('[checkBlockStatusAction] LLM returned an error:', blockInput?.error);
+          logger.error(
+            "[checkBlockStatusAction] LLM returned an error:",
+            blockInput?.error,
+          );
           throw new Error(blockInput?.error);
         }
 
         if (!blockInput?.blockNumber && !blockInput?.blockHash) {
-          throw new Error('No valid block identifier received from LLM.');
+          throw new Error("No valid block identifier received from LLM.");
         }
       } catch (error) {
         logger.error(
-          '[checkBlockStatusAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error.message : String(error)
+          "[checkBlockStatusAction] OBJECT_LARGE model failed",
+          error instanceof Error ? error.message : String(error),
         );
         const errorMessage = `[checkBlockStatusAction] Failed to extract block parameters from input: ${error instanceof Error ? error.message : String(error)}`;
         if (callback) {
-          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+          await callback({
+            text: errorMessage,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { blockStatusChecked: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS', error: errorMessage },
+          data: {
+            actionName: "POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS",
+            error: errorMessage,
+          },
           error: error instanceof Error ? error : new Error(String(error)),
         };
       }
@@ -150,33 +175,34 @@ export const checkBlockStatusAction: Action = {
         logger.info(`📋 Checking status for block number: ${blockIdentifier}`);
       } else {
         // Default to latest block
-        blockIdentifier = 'latest';
-        logger.info('📋 No specific block provided, checking latest block');
+        blockIdentifier = "latest";
+        logger.info("📋 No specific block provided, checking latest block");
       }
 
       // Setup provider - prefer Alchemy, fallback to RPC
       let provider: JsonRpcProvider;
-      let methodUsed: 'alchemy' | 'rpc' = 'rpc';
+      let methodUsed: "alchemy" | "rpc" = "rpc";
       const zkevmAlchemyUrl =
-        runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+        runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+        "https://polygonzkevm-mainnet.g.alchemy.com/v2";
 
       if (alchemyApiKey) {
         provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
-        methodUsed = 'alchemy';
-        logger.info('🔗 Using Alchemy API for block status check');
+        methodUsed = "alchemy";
+        logger.info("🔗 Using Alchemy API for block status check");
       } else {
         provider = new JsonRpcProvider(zkevmRpcUrl);
-        logger.info('🔗 Using direct RPC for block status check');
+        logger.info("🔗 Using direct RPC for block status check");
       }
 
       let blockData: any = null;
-      let blockStatus: BlockStatus = 'unknown';
+      let blockStatus: BlockStatus = "unknown";
       let statusCode: number | undefined;
       let errorMessages: string[] = [];
 
       // Get block data first
       try {
-        logger.info('📥 Fetching block data...');
+        logger.info("📥 Fetching block data...");
 
         if (isHash) {
           blockData = await provider.getBlock(blockIdentifier as string);
@@ -185,7 +211,7 @@ export const checkBlockStatusAction: Action = {
         }
 
         if (!blockData) {
-          throw new Error('Block not found');
+          throw new Error("Block not found");
         }
 
         logger.info(`✅ Block data retrieved for block ${blockData.number}`);
@@ -198,58 +224,71 @@ export const checkBlockStatusAction: Action = {
       // Try to get block status using zkEVM-specific methods
       if (blockData) {
         try {
-          logger.info('🔍 Checking block status...');
+          logger.info("🔍 Checking block status...");
 
           // Try zkEVM-specific RPC methods
           let statusResponse: any;
 
           try {
             // Try zkevm_getBatchByNumber method (common in zkEVM implementations)
-            statusResponse = await provider.send('zkevm_getBatchByNumber', [blockData.number]);
-            logger.info('✅ Got batch status from zkevm_getBatchByNumber');
+            statusResponse = await provider.send("zkevm_getBatchByNumber", [
+              blockData.number,
+            ]);
+            logger.info("✅ Got batch status from zkevm_getBatchByNumber");
           } catch (batchError) {
-            logger.warn('zkevm_getBatchByNumber not available, trying alternative methods');
+            logger.warn(
+              "zkevm_getBatchByNumber not available, trying alternative methods",
+            );
 
             try {
               // Try alternative method for block status
-              statusResponse = await provider.send('zkevm_getBlockStatus', [blockData.number]);
-              logger.info('✅ Got status from zkevm_getBlockStatus');
+              statusResponse = await provider.send("zkevm_getBlockStatus", [
+                blockData.number,
+              ]);
+              logger.info("✅ Got status from zkevm_getBlockStatus");
             } catch (statusError) {
-              logger.warn('zkevm_getBlockStatus not available, using heuristic approach');
+              logger.warn(
+                "zkevm_getBlockStatus not available, using heuristic approach",
+              );
 
               // Fallback: Use heuristic based on block age and confirmations
               const currentBlock = await provider.getBlockNumber();
               const blockAge = currentBlock - blockData.number;
 
               if (blockAge < 10) {
-                blockStatus = 'virtual';
+                blockStatus = "virtual";
                 statusCode = 0;
               } else if (blockAge < 100) {
-                blockStatus = 'trusted';
+                blockStatus = "trusted";
                 statusCode = 1;
               } else {
-                blockStatus = 'consolidated';
+                blockStatus = "consolidated";
                 statusCode = 2;
               }
 
-              logger.info(`📊 Using heuristic: block age ${blockAge}, status: ${blockStatus}`);
+              logger.info(
+                `📊 Using heuristic: block age ${blockAge}, status: ${blockStatus}`,
+              );
             }
           }
 
           // Parse status response if we got one
           if (statusResponse) {
-            if (typeof statusResponse === 'object' && statusResponse.status !== undefined) {
+            if (
+              typeof statusResponse === "object" &&
+              statusResponse.status !== undefined
+            ) {
               statusCode = statusResponse.status;
-            } else if (typeof statusResponse === 'number') {
+            } else if (typeof statusResponse === "number") {
               statusCode = statusResponse;
-            } else if (typeof statusResponse === 'string') {
+            } else if (typeof statusResponse === "string") {
               // Parse string status
               const statusStr = statusResponse.toLowerCase();
-              if (statusStr.includes('virtual')) {
+              if (statusStr.includes("virtual")) {
                 statusCode = 0;
-              } else if (statusStr.includes('trusted')) {
+              } else if (statusStr.includes("trusted")) {
                 statusCode = 1;
-              } else if (statusStr.includes('consolidated')) {
+              } else if (statusStr.includes("consolidated")) {
                 statusCode = 2;
               }
             }
@@ -257,19 +296,21 @@ export const checkBlockStatusAction: Action = {
             // Map status code to status string
             switch (statusCode) {
               case 0:
-                blockStatus = 'virtual';
+                blockStatus = "virtual";
                 break;
               case 1:
-                blockStatus = 'trusted';
+                blockStatus = "trusted";
                 break;
               case 2:
-                blockStatus = 'consolidated';
+                blockStatus = "consolidated";
                 break;
               default:
-                blockStatus = 'unknown';
+                blockStatus = "unknown";
             }
 
-            logger.info(`📊 Block status determined: ${blockStatus} (code: ${statusCode})`);
+            logger.info(
+              `📊 Block status determined: ${blockStatus} (code: ${statusCode})`,
+            );
           }
         } catch (error) {
           const errorMsg = `Failed to get block status: ${error instanceof Error ? error.message : String(error)}`;
@@ -281,7 +322,8 @@ export const checkBlockStatusAction: Action = {
       // Prepare result
       const result: BlockStatusResult = {
         blockNumber:
-          blockData?.number || (typeof blockIdentifier === 'number' ? blockIdentifier : 0),
+          blockData?.number ||
+          (typeof blockIdentifier === "number" ? blockIdentifier : 0),
         blockHash: blockData?.hash,
         status: blockStatus,
         statusCode,
@@ -296,9 +338,9 @@ export const checkBlockStatusAction: Action = {
 
 **Block Information:**
 - Block Number: ${result.blockNumber}
-- Block Hash: ${result.blockHash || 'N/A'}
+- Block Hash: ${result.blockHash || "N/A"}
 - Status: **${result.status.toUpperCase()}** ${statusEmoji}
-- Status Code: ${result.statusCode !== undefined ? result.statusCode : 'N/A'}
+- Status Code: ${result.statusCode !== undefined ? result.statusCode : "N/A"}
 - Method: ${result.method}
 
 **Status Description:**
@@ -306,18 +348,25 @@ ${result.description}
 
 **Timestamp:** ${new Date(result.timestamp).toISOString()}
 
-${errorMessages.length > 0 ? `\n**Warnings/Errors:**\n${errorMessages.map((msg) => `- ${msg}`).join('\n')}` : ''}`;
+${errorMessages.length > 0 ? `\n**Warnings/Errors:**\n${errorMessages.map((msg) => `- ${msg}`).join("\n")}` : ""}`;
 
       if (callback) {
-        await callback({ text: responseText, content: { success: true, result } });
+        await callback({
+          text: responseText,
+          content: { success: true, result },
+        });
       }
 
       return {
         success: true,
         text: responseText,
-        values: { blockStatusChecked: true, status: result.status, statusCode: result.statusCode },
+        values: {
+          blockStatusChecked: true,
+          status: result.status,
+          statusCode: result.statusCode,
+        },
         data: {
-          actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS',
+          actionName: "POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS",
           result,
           errors: errorMessages,
         },
@@ -327,14 +376,20 @@ ${errorMessages.length > 0 ? `\n**Warnings/Errors:**\n${errorMessages.map((msg) 
       logger.error(errorMessage);
 
       if (callback) {
-        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
+        await callback({
+          text: `❌ ${errorMessage}`,
+          content: { success: false, error: errorMessage },
+        });
       }
 
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { blockStatusChecked: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_CHECK_L2_BLOCK_STATUS",
+          error: errorMessage,
+        },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
@@ -343,31 +398,31 @@ ${errorMessages.length > 0 ? `\n**Warnings/Errors:**\n${errorMessages.map((msg) 
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Check the status of block 12345 on Polygon zkEVM',
+          text: "Check the status of block 12345 on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: '📊 **Block Status: Consolidated** (Block: 12345)\n\nThis block has been finalized and its state is part of a consolidated batch on L1, ensuring the highest level of security.',
-          action: 'POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM',
+          text: "📊 **Block Status: Consolidated** (Block: 12345)\n\nThis block has been finalized and its state is part of a consolidated batch on L1, ensuring the highest level of security.",
+          action: "POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Is block 0xabc... on Polygon zkEVM finalized?',
+          text: "Is block 0xabc... on Polygon zkEVM finalized?",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: 'Let me check the finality status of that block on Polygon zkEVM.',
-          action: 'POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM',
+          text: "Let me check the finality status of that block on Polygon zkEVM.",
+          action: "POLYGON_CHECK_L2_BLOCK_STATUS_ZKEVM",
         },
       },
     ],
@@ -376,26 +431,26 @@ ${errorMessages.length > 0 ? `\n**Warnings/Errors:**\n${errorMessages.map((msg) 
 
 function getStatusEmoji(status: BlockStatus): string {
   switch (status) {
-    case 'virtual':
-      return '🟡';
-    case 'trusted':
-      return '🟠';
-    case 'consolidated':
-      return '🟢';
+    case "virtual":
+      return "🟡";
+    case "trusted":
+      return "🟠";
+    case "consolidated":
+      return "🟢";
     default:
-      return '❓';
+      return "❓";
   }
 }
 
 function getStatusDescription(status: BlockStatus): string {
   switch (status) {
-    case 'virtual':
-      return 'Block is virtual - recently proposed but not yet trusted by the network.';
-    case 'trusted':
-      return 'Block is trusted - validated by the network but not yet consolidated.';
-    case 'consolidated':
-      return 'Block is consolidated - fully finalized and immutable on the network.';
+    case "virtual":
+      return "Block is virtual - recently proposed but not yet trusted by the network.";
+    case "trusted":
+      return "Block is trusted - validated by the network but not yet consolidated.";
+    case "consolidated":
+      return "Block is consolidated - fully finalized and immutable on the network.";
     default:
-      return 'Block status is unknown - unable to determine the current state.';
+      return "Block status is unknown - unable to determine the current state.";
   }
 }

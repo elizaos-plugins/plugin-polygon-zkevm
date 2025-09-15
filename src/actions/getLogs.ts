@@ -5,24 +5,31 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
-  logger
-} from '@elizaos/core';
-import { JsonRpcProvider } from 'ethers';
-import { getLogsTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  logger,
+} from "@elizaos/core";
+import { JsonRpcProvider } from "ethers";
+import { getLogsTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 /**
  * Get logs action for Polygon zkEVM
  * Retrieves event logs based on filter criteria
  */
 export const getLogsAction: Action = {
-  name: 'POLYGON_ZKEVM_GET_LOGS',
-  similes: ['GET_EVENTS', 'EVENT_LOGS', 'LOGS', 'CONTRACT_EVENTS'].map((s) => `POLYGON_ZKEVM_${s}`),
-  description: 'Gets logs/events for a given contract address on Polygon zkEVM.',
+  name: "POLYGON_ZKEVM_GET_LOGS",
+  similes: ["GET_EVENTS", "EVENT_LOGS", "LOGS", "CONTRACT_EVENTS"].map(
+    (s) => `POLYGON_ZKEVM_${s}`,
+  ),
+  description:
+    "Gets logs/events for a given contract address on Polygon zkEVM.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
@@ -36,25 +43,29 @@ export const getLogsAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      logger.info('Handling GET_LOGS_ZKEVM action');
+      logger.info("Handling GET_LOGS_ZKEVM action");
 
-      const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-      const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+      const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+      const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
       if (!alchemyApiKey && !zkevmRpcUrl) {
-        const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
+        const errorMessage =
+          "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
         logger.error(`[getLogsAction] Configuration error: ${errorMessage}`);
         if (callback) {
-          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+          await callback({
+            text: errorMessage,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { logsRetrieved: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_GET_LOGS', error: errorMessage },
+          data: { actionName: "POLYGON_ZKEVM_GET_LOGS", error: errorMessage },
           error: new Error(errorMessage),
         };
       }
@@ -69,26 +80,32 @@ export const getLogsAction: Action = {
           toBlock?: string | number;
           topics?: string[];
           error?: string;
-        }>(runtime, state, getLogsTemplate, 'getLogsAction');
+        }>(runtime, state, getLogsTemplate, "getLogsAction");
 
         if (logsInput?.error) {
-          logger.error('[getLogsAction] LLM returned an error:', logsInput?.error);
+          logger.error(
+            "[getLogsAction] LLM returned an error:",
+            logsInput?.error,
+          );
           throw new Error(logsInput?.error);
         }
       } catch (error) {
         logger.error(
-          '[getLogsAction] OBJECT_LARGE model failed',
-          error instanceof Error ? error.message : String(error)
+          "[getLogsAction] OBJECT_LARGE model failed",
+          error instanceof Error ? error.message : String(error),
         );
         const errorMessage = `[getLogsAction] Failed to extract logs parameters from input: ${error instanceof Error ? error.message : String(error)}`;
         if (callback) {
-          await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+          await callback({
+            text: errorMessage,
+            content: { success: false, error: errorMessage },
+          });
         }
         return {
           success: false,
           text: `❌ ${errorMessage}`,
           values: { logsRetrieved: false, error: true, errorMessage },
-          data: { actionName: 'POLYGON_ZKEVM_GET_LOGS', error: errorMessage },
+          data: { actionName: "POLYGON_ZKEVM_GET_LOGS", error: errorMessage },
           error: error instanceof Error ? error : new Error(String(error)),
         };
       }
@@ -96,7 +113,8 @@ export const getLogsAction: Action = {
       // Setup provider - prefer Alchemy, fallback to RPC
       let provider: JsonRpcProvider;
       const zkevmAlchemyUrl =
-        runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+        runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+        "https://polygonzkevm-mainnet.g.alchemy.com/v2";
 
       if (alchemyApiKey) {
         provider = new JsonRpcProvider(`${zkevmAlchemyUrl}/${alchemyApiKey}`);
@@ -115,8 +133,8 @@ export const getLogsAction: Action = {
       // Use LLM-extracted block range if available
       if (logsInput?.fromBlock !== undefined) {
         if (
-          typeof logsInput.fromBlock === 'string' &&
-          ['latest', 'earliest', 'pending'].includes(logsInput.fromBlock)
+          typeof logsInput.fromBlock === "string" &&
+          ["latest", "earliest", "pending"].includes(logsInput.fromBlock)
         ) {
           filter.fromBlock = logsInput.fromBlock;
         } else {
@@ -125,13 +143,13 @@ export const getLogsAction: Action = {
         }
       } else {
         // Default to recent blocks to avoid overwhelming response
-        filter.fromBlock = 'latest';
+        filter.fromBlock = "latest";
       }
 
       if (logsInput?.toBlock !== undefined) {
         if (
-          typeof logsInput.toBlock === 'string' &&
-          ['latest', 'earliest', 'pending'].includes(logsInput.toBlock)
+          typeof logsInput.toBlock === "string" &&
+          ["latest", "earliest", "pending"].includes(logsInput.toBlock)
         ) {
           filter.toBlock = logsInput.toBlock;
         } else {
@@ -139,23 +157,31 @@ export const getLogsAction: Action = {
           filter.toBlock = `0x${blockNum.toString(16)}`;
         }
       } else {
-        filter.toBlock = 'latest';
+        filter.toBlock = "latest";
       }
 
       // Add topics if provided
-      if (logsInput?.topics && Array.isArray(logsInput.topics) && logsInput.topics.length > 0) {
+      if (
+        logsInput?.topics &&
+        Array.isArray(logsInput.topics) &&
+        logsInput.topics.length > 0
+      ) {
         filter.topics = logsInput.topics;
       }
 
       // If no specific address and using latest blocks, limit the scope to avoid overwhelming results
-      if (!filter.address && filter.fromBlock === 'latest' && filter.toBlock === 'latest') {
+      if (
+        !filter.address &&
+        filter.fromBlock === "latest" &&
+        filter.toBlock === "latest"
+      ) {
         const currentBlock = await provider.getBlockNumber();
         filter.fromBlock = `0x${Math.max(0, currentBlock - 100).toString(16)}`; // Last 100 blocks
         filter.toBlock = `0x${currentBlock.toString(16)}`;
       }
 
       // Get logs
-      const logs = await provider.send('eth_getLogs', [filter]);
+      const logs = await provider.send("eth_getLogs", [filter]);
 
       let responseText = `📋 Event Logs Query Results:
 🔍 Filter: ${JSON.stringify(filter, null, 2)}
@@ -183,7 +209,7 @@ export const getLogsAction: Action = {
             responseText += `\n  🎯 Event Signature: ${log.topics[0]}`;
           }
 
-          if (log.data && log.data !== '0x') {
+          if (log.data && log.data !== "0x") {
             const dataLength = (log.data.length - 2) / 2;
             responseText += `\n  📦 Data: ${dataLength} bytes`;
           }
@@ -195,31 +221,37 @@ export const getLogsAction: Action = {
       }
 
       if (callback) {
-        await callback({ text: responseText, content: { success: true, totalLogs: logs.length } });
+        await callback({
+          text: responseText,
+          content: { success: true, totalLogs: logs.length },
+        });
       }
       return {
         success: true,
         text: responseText,
         values: { logsRetrieved: true, totalLogs: logs.length },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_LOGS',
+          actionName: "POLYGON_ZKEVM_GET_LOGS",
           filter,
           logs: logs.slice(0, 10),
           totalLogs: logs.length,
         },
       };
     } catch (error) {
-      logger.error('Error in GET_LOGS_ZKEVM action:', error);
+      logger.error("Error in GET_LOGS_ZKEVM action:", error);
 
-      const errText = `Error getting logs: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errText = `Error getting logs: ${error instanceof Error ? error.message : "Unknown error"}`;
       if (callback) {
-        await callback({ text: errText, content: { success: false, error: errText } });
+        await callback({
+          text: errText,
+          content: { success: false, error: errText },
+        });
       }
       return {
         success: false,
         text: `❌ ${errText}`,
         values: { logsRetrieved: false, error: true, errorMessage: errText },
-        data: { actionName: 'POLYGON_ZKEVM_GET_LOGS', error: errText },
+        data: { actionName: "POLYGON_ZKEVM_GET_LOGS", error: errText },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
@@ -228,13 +260,13 @@ export const getLogsAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Get logs for contract 0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6 on Polygon zkEVM',
+          text: "Get logs for contract 0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6 on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: `📋 Event Logs Query Results:
 🔍 Filter: {
@@ -253,22 +285,22 @@ export const getLogsAction: Action = {
   🏷️ Topics: 3
   🎯 Event Signature: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
   📦 Data: 64 bytes`,
-          action: 'POLYGON_GET_LOGS_ZKEVM',
+          action: "POLYGON_GET_LOGS_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'get events for 0x123... from block 1000 to 2000 on Polygon zkEVM',
+          text: "get events for 0x123... from block 1000 to 2000 on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: "I'll get the event logs for you on Polygon zkEVM.",
-          action: 'POLYGON_GET_LOGS_ZKEVM',
+          action: "POLYGON_GET_LOGS_ZKEVM",
         },
       },
     ],

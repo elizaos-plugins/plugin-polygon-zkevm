@@ -4,7 +4,7 @@ import {
   ModelType,
   composePromptFromState,
   logger,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 /**
  * Calls the LLM with timeout handling to prevent hanging
@@ -20,15 +20,18 @@ export async function callLLMWithTimeout<T>(
   state: State | undefined,
   template: string,
   actionName: string,
-  timeoutMs: number = 30000
+  timeoutMs: number = 30000,
 ): Promise<T> {
   logger.info(`[${actionName}] Starting LLM parameter extraction...`);
 
   // Add timeout to prevent hanging
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(
-      () => reject(new Error(`LLM call timed out after ${timeoutMs / 1000} seconds`)),
-      timeoutMs
+      () =>
+        reject(
+          new Error(`LLM call timed out after ${timeoutMs / 1000} seconds`),
+        ),
+      timeoutMs,
     );
   });
 
@@ -42,7 +45,10 @@ export async function callLLMWithTimeout<T>(
   const result = (await Promise.race([llmPromise, timeoutPromise])) as T;
 
   logger.info(`[${actionName}] LLM parameter extraction completed`);
-  logger.debug(`[${actionName}] Parsed LLM parameters:`, JSON.stringify(result));
+  logger.debug(
+    `[${actionName}] Parsed LLM parameters:`,
+    JSON.stringify(result),
+  );
 
   return result;
 }

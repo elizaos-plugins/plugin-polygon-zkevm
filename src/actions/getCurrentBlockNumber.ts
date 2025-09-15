@@ -5,9 +5,9 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  type State
-} from '@elizaos/core';
-import { JsonRpcProvider } from 'ethers';
+  type State,
+} from "@elizaos/core";
+import { JsonRpcProvider } from "ethers";
 
 interface CurrentBlockParams {
   requestCurrentBlock?: boolean;
@@ -15,46 +15,64 @@ interface CurrentBlockParams {
 }
 
 export const getCurrentBlockNumberAction: Action = {
-  name: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
+  name: "POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER",
   similes: [
-    'GET_CURRENT_L2_BLOCK_NUMBER',
-    'CHECK_BLOCK',
-    'SHOW_LATEST_BLOCK',
-    'BLOCK_NUMBER',
-    'GET_BLOCK_NUMBER',
-    'GET_L2_BLOCK_NUMBER',
+    "GET_CURRENT_L2_BLOCK_NUMBER",
+    "CHECK_BLOCK",
+    "SHOW_LATEST_BLOCK",
+    "BLOCK_NUMBER",
+    "GET_BLOCK_NUMBER",
+    "GET_L2_BLOCK_NUMBER",
   ].map((s) => `POLYGON_ZKEVM_${s}`),
-  description: 'Gets the current block number on Polygon zkEVM (Layer 2 zero-knowledge rollup).',
+  description:
+    "Gets the current block number on Polygon zkEVM (Layer 2 zero-knowledge rollup).",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     // If no API configuration is available, don't try to handle
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      logger.debug('[getCurrentBlockNumberAction] No API keys available');
+      logger.debug("[getCurrentBlockNumberAction] No API keys available");
       return false;
     }
 
-    const content = message.content?.text?.toLowerCase() || '';
+    const content = message.content?.text?.toLowerCase() || "";
 
     // Simple keyword matching - much more permissive
-    const blockKeywords = ['block', 'polygon', 'zkevm', 'zkEVM', 'current', 'latest', 'number'];
+    const blockKeywords = [
+      "block",
+      "polygon",
+      "zkevm",
+      "zkEVM",
+      "current",
+      "latest",
+      "number",
+    ];
 
     // Check if message contains relevant keywords
     const hasBlockKeyword = blockKeywords.some((keyword) =>
-      content.includes(keyword.toLowerCase())
+      content.includes(keyword.toLowerCase()),
     );
 
     // Also check for specific patterns
     const hasBlockPattern =
-      /block.*number|current.*block|latest.*block|polygon.*block|zkevm.*block/i.test(content);
+      /block.*number|current.*block|latest.*block|polygon.*block|zkevm.*block/i.test(
+        content,
+      );
 
     // Much simpler validation - if it mentions blocks or zkEVM, try to handle it
     const shouldHandle = hasBlockKeyword || hasBlockPattern;
 
     if (shouldHandle) {
-      logger.debug('[getCurrentBlockNumberAction] Validation passed for message:', content);
+      logger.debug(
+        "[getCurrentBlockNumberAction] Validation passed for message:",
+        content,
+      );
     }
 
     return shouldHandle;
@@ -65,15 +83,16 @@ export const getCurrentBlockNumberAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[getCurrentBlockNumberAction] Handler called!');
+    logger.info("[getCurrentBlockNumberAction] Handler called!");
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
       if (callback) {
         await callback({
           text: errorMessage,
@@ -85,7 +104,7 @@ export const getCurrentBlockNumberAction: Action = {
         text: `❌ ${errorMessage}`,
         values: { currentBlockRetrieved: false, error: true, errorMessage },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
+          actionName: "POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER",
           error: errorMessage,
         },
         error: new Error(errorMessage),
@@ -93,23 +112,25 @@ export const getCurrentBlockNumberAction: Action = {
     }
 
     let blockNumber: number | null = null;
-    let methodUsed: 'alchemy' | 'rpc' | null = null;
+    let methodUsed: "alchemy" | "rpc" | null = null;
     let errorMessages: string[] = [];
 
     // 1. Attempt to use Alchemy API
     if (alchemyApiKey) {
       try {
-        logger.info('[getCurrentBlockNumberAction] Attempting to use Alchemy API');
+        logger.info(
+          "[getCurrentBlockNumberAction] Attempting to use Alchemy API",
+        );
         const zkevmAlchemyUrl =
-          runtime.getSetting('ZKEVM_ALCHEMY_URL') ||
-          'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+          runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+          "https://polygonzkevm-mainnet.g.alchemy.com/v2";
         const alchemyUrl = `${zkevmAlchemyUrl}/${alchemyApiKey}`;
         const options = {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'eth_blockNumber',
+            jsonrpc: "2.0",
+            method: "eth_blockNumber",
             params: [],
             id: 1,
           }),
@@ -117,44 +138,55 @@ export const getCurrentBlockNumberAction: Action = {
 
         const response = await fetch(alchemyUrl, options);
         if (!response.ok) {
-          throw new Error(`Alchemy API returned status ${response.status}: ${response.statusText}`);
+          throw new Error(
+            `Alchemy API returned status ${response.status}: ${response.statusText}`,
+          );
         }
-        const data = (await response.json()) as { error?: { message: string }; result?: string };
+        const data = (await response.json()) as {
+          error?: { message: string };
+          result?: string;
+        };
 
         if (data?.error) {
-          throw new Error(`Alchemy API returned error: ${data?.error?.message}`);
+          throw new Error(
+            `Alchemy API returned error: ${data?.error?.message}`,
+          );
         }
 
         if (data?.result) {
           blockNumber = parseInt(data?.result, 16);
-          methodUsed = 'alchemy';
-          logger.info(`[getCurrentBlockNumberAction] Block number from Alchemy: ${blockNumber}`);
+          methodUsed = "alchemy";
+          logger.info(
+            `[getCurrentBlockNumberAction] Block number from Alchemy: ${blockNumber}`,
+          );
         } else {
-          logger.error('Alchemy API did not return a result.');
-          throw new Error('Alchemy API did not return a result.');
+          logger.error("Alchemy API did not return a result.");
+          throw new Error("Alchemy API did not return a result.");
         }
       } catch (error) {
-        logger.error('Error using Alchemy API:', error);
+        logger.error("Error using Alchemy API:", error);
         errorMessages.push(
-          `Alchemy API failed: ${error instanceof Error ? error.message : String(error)}`
+          `Alchemy API failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
 
     // 2. Fallback to JSON-RPC if Alchemy failed or not configured
     if (blockNumber === null && zkevmRpcUrl) {
-      logger.info('[getCurrentBlockNumberAction] Falling back to JSON-RPC');
+      logger.info("[getCurrentBlockNumberAction] Falling back to JSON-RPC");
       try {
         const provider = new JsonRpcProvider(zkevmRpcUrl);
         const latestBlock = await provider.getBlockNumber();
 
         blockNumber = latestBlock;
-        methodUsed = 'rpc';
-        logger.info(`[getCurrentBlockNumberAction] Block number from RPC: ${blockNumber}`);
+        methodUsed = "rpc";
+        logger.info(
+          `[getCurrentBlockNumberAction] Block number from RPC: ${blockNumber}`,
+        );
       } catch (error) {
-        logger.error('Error using JSON-RPC fallback:', error);
+        logger.error("Error using JSON-RPC fallback:", error);
         errorMessages.push(
-          `JSON-RPC fallback failed: ${error instanceof Error ? error.message : String(error)}`
+          `JSON-RPC fallback failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -169,7 +201,7 @@ export const getCurrentBlockNumberAction: Action = {
           content: {
             success: true,
             blockNumber,
-            network: 'polygon-zkevm',
+            network: "polygon-zkevm",
             method: methodUsed,
             timestamp: Date.now(),
           },
@@ -179,23 +211,30 @@ export const getCurrentBlockNumberAction: Action = {
       return {
         success: true,
         text: successText,
-        values: { currentBlockRetrieved: true, currentBlockNumber: blockNumber },
+        values: {
+          currentBlockRetrieved: true,
+          currentBlockNumber: blockNumber,
+        },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
+          actionName: "POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER",
           blockNumber,
-          network: 'polygon-zkevm',
+          network: "polygon-zkevm",
           timestamp: Date.now(),
           method: methodUsed,
         },
       };
     } else {
-      const errorMessage = `Failed to retrieve Polygon zkEVM block number using both Alchemy and RPC. Errors: ${errorMessages.join('; ')}`;
+      const errorMessage = `Failed to retrieve Polygon zkEVM block number using both Alchemy and RPC. Errors: ${errorMessages.join("; ")}`;
       logger.error(errorMessage);
 
       if (callback) {
         await callback({
           text: `❌ ${errorMessage}`,
-          content: { success: false, error: errorMessage, errors: errorMessages },
+          content: {
+            success: false,
+            error: errorMessage,
+            errors: errorMessages,
+          },
         });
       }
 
@@ -204,7 +243,7 @@ export const getCurrentBlockNumberAction: Action = {
         text: `❌ ${errorMessage}`,
         values: { currentBlockRetrieved: false, error: true, errorMessage },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER',
+          actionName: "POLYGON_ZKEVM_GET_CURRENT_BLOCK_NUMBER",
           error: errorMessage,
           errors: errorMessages,
         },
@@ -216,31 +255,31 @@ export const getCurrentBlockNumberAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'What is the current block number on Polygon zkEVM?',
+          text: "What is the current block number on Polygon zkEVM?",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: "I'll get the current block number for Polygon zkEVM.",
-          action: 'POLYGON_GET_CURRENT_BLOCK_NUMBER_ZKEVM',
+          action: "POLYGON_GET_CURRENT_BLOCK_NUMBER_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Show me the latest zkEVM block on Polygon',
+          text: "Show me the latest zkEVM block on Polygon",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: 'Let me fetch the latest block number for you on Polygon zkEVM.',
-          action: 'POLYGON_GET_CURRENT_BLOCK_NUMBER_ZKEVM',
+          text: "Let me fetch the latest block number for you on Polygon zkEVM.",
+          action: "POLYGON_GET_CURRENT_BLOCK_NUMBER_ZKEVM",
         },
       },
     ],

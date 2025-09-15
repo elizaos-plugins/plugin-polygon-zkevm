@@ -6,56 +6,60 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  type State
-} from '@elizaos/core';
+  type State,
+} from "@elizaos/core";
 import {
   Contract,
   JsonRpcProvider,
   parseEther,
   parseUnits,
-  Wallet
-} from 'ethers';
-import { interactSmartContractTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  Wallet,
+} from "ethers";
+import { interactSmartContractTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 export const interactSmartContractAction: Action = {
-  name: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT',
+  name: "POLYGON_ZKEVM_INTERACT_SMART_CONTRACT",
   similes: [
-    'CALL_CONTRACT',
-    'INVOKE_CONTRACT',
-    'EXECUTE_CONTRACT_METHOD',
-    'CONTRACT_INTERACTION',
-    'SEND_CONTRACT_TRANSACTION',
+    "CALL_CONTRACT",
+    "INVOKE_CONTRACT",
+    "EXECUTE_CONTRACT_METHOD",
+    "CONTRACT_INTERACTION",
+    "SEND_CONTRACT_TRANSACTION",
   ].map((s) => `POLYGON_ZKEVM_${s}`),
   description:
-    'Interacts with a smart contract by calling a state-changing method on Polygon zkEVM.',
+    "Interacts with a smart contract by calling a state-changing method on Polygon zkEVM.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
     }
 
-    const content = message.content?.text?.toLowerCase() || '';
+    const content = message.content?.text?.toLowerCase() || "";
 
     // Contract interaction keywords
     const contractKeywords = [
-      'call contract',
-      'interact with contract',
-      'contract call',
-      'invoke contract',
-      'execute contract',
-      'send to contract',
-      'contract interaction',
-      'smart contract',
-      'call function',
-      'contract function',
-      'method call',
-      'function call',
-      'contract method',
-      'abi call',
+      "call contract",
+      "interact with contract",
+      "contract call",
+      "invoke contract",
+      "execute contract",
+      "send to contract",
+      "contract interaction",
+      "smart contract",
+      "call function",
+      "contract function",
+      "method call",
+      "function call",
+      "contract method",
+      "abi call",
     ];
 
     // Check for contract address pattern (0x followed by 40 hex characters)
@@ -63,7 +67,9 @@ export const interactSmartContractAction: Action = {
     const hasContractAddress = contractAddressPattern.test(content);
 
     // Must contain contract interaction keywords OR have contract address pattern
-    const hasKeywords = contractKeywords.some((keyword) => content.includes(keyword));
+    const hasKeywords = contractKeywords.some((keyword) =>
+      content.includes(keyword),
+    );
 
     return hasKeywords || hasContractAddress;
   },
@@ -73,20 +79,22 @@ export const interactSmartContractAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[interactSmartContractAction] Handler called!');
+    logger.info("[interactSmartContractAction] Handler called!");
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
-    const privateKey = runtime.getSetting('PRIVATE_KEY');
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
+    const privateKey = runtime.getSetting("PRIVATE_KEY");
 
     if (!privateKey) {
-      const errorMessage = 'PRIVATE_KEY is required for contract interaction.';
-      logger.error(`[interactSmartContractAction] Configuration error: ${errorMessage}`);
+      const errorMessage = "PRIVATE_KEY is required for contract interaction.";
+      logger.error(
+        `[interactSmartContractAction] Configuration error: ${errorMessage}`,
+      );
       const errorContent: Content = {
         text: errorMessage,
-        actions: ['POLYGON_INTERACT_SMART_CONTRACT_ZKEVM'],
+        actions: ["POLYGON_INTERACT_SMART_CONTRACT_ZKEVM"],
         data: { error: errorMessage },
       };
 
@@ -97,11 +105,14 @@ export const interactSmartContractAction: Action = {
     }
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-      logger.error(`[interactSmartContractAction] Configuration error: ${errorMessage}`);
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+      logger.error(
+        `[interactSmartContractAction] Configuration error: ${errorMessage}`,
+      );
       const errorContent: Content = {
         text: errorMessage,
-        actions: ['POLYGON_INTERACT_SMART_CONTRACT_ZKEVM'],
+        actions: ["POLYGON_INTERACT_SMART_CONTRACT_ZKEVM"],
         data: { error: errorMessage },
       };
 
@@ -113,7 +124,7 @@ export const interactSmartContractAction: Action = {
 
     let interactionParams: any | null = null;
     let transactionHash: string | null = null;
-    let methodUsed: 'alchemy' | 'rpc' | null = null;
+    let methodUsed: "alchemy" | "rpc" | null = null;
     let errorMessages: string[] = [];
 
     // Extract interaction parameters using LLM
@@ -129,13 +140,18 @@ export const interactSmartContractAction: Action = {
         maxPriorityFeePerGas?: string;
         value?: string;
         error?: string;
-      }>(runtime, state, interactSmartContractTemplate, 'interactSmartContractAction');
+      }>(
+        runtime,
+        state,
+        interactSmartContractTemplate,
+        "interactSmartContractAction",
+      );
 
       // Check if the model returned an error field
       if (interactionParams?.error) {
         logger.error(
-          '[interactSmartContractAction] LLM returned an error:',
-          interactionParams?.error
+          "[interactSmartContractAction] LLM returned an error:",
+          interactionParams?.error,
         );
         throw new Error(interactionParams?.error);
       }
@@ -143,18 +159,27 @@ export const interactSmartContractAction: Action = {
       // Validate required parameters
       if (
         !interactionParams?.contractAddress ||
-        typeof interactionParams.contractAddress !== 'string' ||
-        !interactionParams.contractAddress.startsWith('0x')
+        typeof interactionParams.contractAddress !== "string" ||
+        !interactionParams.contractAddress.startsWith("0x")
       ) {
-        throw new Error('Invalid contract address received from LLM. Address must start with 0x.');
+        throw new Error(
+          "Invalid contract address received from LLM. Address must start with 0x.",
+        );
       }
 
       if (!interactionParams?.abi || !Array.isArray(interactionParams.abi)) {
-        throw new Error('Invalid ABI received from LLM. ABI must be a JSON array.');
+        throw new Error(
+          "Invalid ABI received from LLM. ABI must be a JSON array.",
+        );
       }
 
-      if (!interactionParams?.methodName || typeof interactionParams.methodName !== 'string') {
-        throw new Error('Invalid method name received from LLM. Method name must be a string.');
+      if (
+        !interactionParams?.methodName ||
+        typeof interactionParams.methodName !== "string"
+      ) {
+        throw new Error(
+          "Invalid method name received from LLM. Method name must be a string.",
+        );
       }
 
       // Set default args if not provided
@@ -163,25 +188,26 @@ export const interactSmartContractAction: Action = {
       }
     } catch (error) {
       logger.debug(
-        '[interactSmartContractAction] LLM extraction failed',
-        error instanceof Error ? error.message : String(error)
+        "[interactSmartContractAction] LLM extraction failed",
+        error instanceof Error ? error.message : String(error),
       );
       throw new Error(
-        `[interactSmartContractAction] Failed to extract interaction parameters: ${error instanceof Error ? error.message : String(error)}`
+        `[interactSmartContractAction] Failed to extract interaction parameters: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
     // Determine RPC URL
     const rpcUrl = alchemyApiKey
-      ? `${runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2'}/${alchemyApiKey}`
+      ? `${runtime.getSetting("ZKEVM_ALCHEMY_URL") || "https://polygonzkevm-mainnet.g.alchemy.com/v2"}/${alchemyApiKey}`
       : zkevmRpcUrl;
 
     if (!rpcUrl) {
-      const errorMessage = 'Unable to determine RPC URL for contract interaction.';
+      const errorMessage =
+        "Unable to determine RPC URL for contract interaction.";
       logger.error(`[interactSmartContractAction] ${errorMessage}`);
       const errorContent: Content = {
         text: errorMessage,
-        actions: ['POLYGON_INTERACT_SMART_CONTRACT_ZKEVM'],
+        actions: ["POLYGON_INTERACT_SMART_CONTRACT_ZKEVM"],
         data: { error: errorMessage },
       };
 
@@ -194,7 +220,7 @@ export const interactSmartContractAction: Action = {
     // 1. Attempt contract interaction using Alchemy/RPC with ethers.js
     try {
       logger.info(
-        `[interactSmartContractAction] Attempting contract interaction at ${interactionParams.contractAddress}`
+        `[interactSmartContractAction] Attempting contract interaction at ${interactionParams.contractAddress}`,
       );
 
       const provider = new JsonRpcProvider(rpcUrl);
@@ -204,38 +230,49 @@ export const interactSmartContractAction: Action = {
       const contract = new Contract(
         interactionParams.contractAddress,
         interactionParams.abi,
-        wallet
+        wallet,
       );
 
       // Verify the method exists in the contract
       if (!contract[interactionParams.methodName]) {
-        throw new Error(`Method '${interactionParams.methodName}' not found in contract ABI`);
+        throw new Error(
+          `Method '${interactionParams.methodName}' not found in contract ABI`,
+        );
       }
 
       // Check if this is a view/pure function (read-only)
       const methodAbi = interactionParams.abi.find(
-        (item: any) => item.type === 'function' && item.name === interactionParams.methodName
+        (item: any) =>
+          item.type === "function" &&
+          item.name === interactionParams.methodName,
       );
       const isReadOnly =
-        methodAbi && (methodAbi.stateMutability === 'view' || methodAbi.stateMutability === 'pure');
+        methodAbi &&
+        (methodAbi.stateMutability === "view" ||
+          methodAbi.stateMutability === "pure");
 
       if (isReadOnly) {
         // For view/pure functions, call directly and return the result
         logger.info(
-          `[interactSmartContractAction] Calling view/pure method '${interactionParams.methodName}' with args: ${JSON.stringify(interactionParams.args)}`
+          `[interactSmartContractAction] Calling view/pure method '${interactionParams.methodName}' with args: ${JSON.stringify(interactionParams.args)}`,
         );
 
-        const result = await contract[interactionParams.methodName](...interactionParams.args);
-        methodUsed = alchemyApiKey ? 'alchemy' : 'rpc';
+        const result = await contract[interactionParams.methodName](
+          ...interactionParams.args,
+        );
+        methodUsed = alchemyApiKey ? "alchemy" : "rpc";
 
         logger.info(
-          `[interactSmartContractAction] View function call successful. Result: ${result?.toString()}`
+          `[interactSmartContractAction] View function call successful. Result: ${result?.toString()}`,
         );
 
         const successText = `✅ Smart contract view function called successfully on Polygon zkEVM!\n\n**Contract Address:** \`${interactionParams.contractAddress}\`\n**Method Called:** \`${interactionParams.methodName}\`\n**Arguments:** \`${JSON.stringify(interactionParams.args)}\`\n**Result:** \`${result?.toString()}\`\n**Method Used:** ${methodUsed}\n**Network:** Polygon zkEVM\n\nThis was a read-only function call that doesn't modify blockchain state.`;
 
         if (callback) {
-          await callback({ text: successText, content: { success: true, isReadOnly: true } });
+          await callback({
+            text: successText,
+            content: { success: true, isReadOnly: true },
+          });
         }
 
         return {
@@ -243,12 +280,12 @@ export const interactSmartContractAction: Action = {
           text: successText,
           values: { contractInteractionSucceeded: true, isReadOnly: true },
           data: {
-            actionName: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT',
+            actionName: "POLYGON_ZKEVM_INTERACT_SMART_CONTRACT",
             contractAddress: interactionParams.contractAddress,
             methodName: interactionParams.methodName,
             args: interactionParams.args,
             result: result?.toString(),
-            network: 'polygon-zkevm',
+            network: "polygon-zkevm",
             timestamp: Date.now(),
             method: methodUsed,
             isReadOnly: true,
@@ -270,36 +307,46 @@ export const interactSmartContractAction: Action = {
       } else {
         // Estimate gas if not provided
         try {
-          const estimatedGas = await contract[interactionParams.methodName].estimateGas(
-            ...interactionParams.args,
-            transactionOptions
-          );
+          const estimatedGas = await contract[
+            interactionParams.methodName
+          ].estimateGas(...interactionParams.args, transactionOptions);
           transactionOptions.gasLimit = Math.floor(Number(estimatedGas) * 1.2); // Add 20% buffer
-          logger.info(`[interactSmartContractAction] Estimated gas: ${estimatedGas.toString()}`);
+          logger.info(
+            `[interactSmartContractAction] Estimated gas: ${estimatedGas.toString()}`,
+          );
         } catch (gasError) {
           logger.warn(
-            `[interactSmartContractAction] Gas estimation failed, using default: ${gasError}`
+            `[interactSmartContractAction] Gas estimation failed, using default: ${gasError}`,
           );
-          transactionOptions.gasLimit = '500000'; // Default gas limit for contract interaction
+          transactionOptions.gasLimit = "500000"; // Default gas limit for contract interaction
         }
       }
 
       // Handle gas pricing (EIP-1559 vs legacy)
-      if (interactionParams.maxFeePerGas || interactionParams.maxPriorityFeePerGas) {
+      if (
+        interactionParams.maxFeePerGas ||
+        interactionParams.maxPriorityFeePerGas
+      ) {
         // EIP-1559 transaction
         if (interactionParams.maxFeePerGas) {
-          transactionOptions.maxFeePerGas = parseUnits(interactionParams.maxFeePerGas, 'gwei');
+          transactionOptions.maxFeePerGas = parseUnits(
+            interactionParams.maxFeePerGas,
+            "gwei",
+          );
         }
         if (interactionParams.maxPriorityFeePerGas) {
           transactionOptions.maxPriorityFeePerGas = parseUnits(
             interactionParams.maxPriorityFeePerGas,
-            'gwei'
+            "gwei",
           );
         }
         transactionOptions.type = 2; // EIP-1559
       } else if (interactionParams.gasPrice) {
         // Legacy transaction
-        transactionOptions.gasPrice = parseUnits(interactionParams.gasPrice, 'gwei');
+        transactionOptions.gasPrice = parseUnits(
+          interactionParams.gasPrice,
+          "gwei",
+        );
         transactionOptions.type = 0; // Legacy
       } else {
         // Use current gas price
@@ -307,48 +354,56 @@ export const interactSmartContractAction: Action = {
           const feeData = await provider.getFeeData();
           if (feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
             transactionOptions.maxFeePerGas = feeData.maxFeePerGas;
-            transactionOptions.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
+            transactionOptions.maxPriorityFeePerGas =
+              feeData.maxPriorityFeePerGas;
             transactionOptions.type = 2;
           } else if (feeData.gasPrice) {
             transactionOptions.gasPrice = feeData.gasPrice;
             transactionOptions.type = 0;
           }
         } catch (feeError) {
-          logger.warn(`[interactSmartContractAction] Fee data fetch failed: ${feeError}`);
+          logger.warn(
+            `[interactSmartContractAction] Fee data fetch failed: ${feeError}`,
+          );
         }
       }
 
       // Call the contract method (state-changing)
       logger.info(
-        `[interactSmartContractAction] Calling state-changing method '${interactionParams.methodName}' with args: ${JSON.stringify(interactionParams.args)}`
+        `[interactSmartContractAction] Calling state-changing method '${interactionParams.methodName}' with args: ${JSON.stringify(interactionParams.args)}`,
       );
 
       const transaction = await contract[interactionParams.methodName](
         ...interactionParams.args,
-        transactionOptions
+        transactionOptions,
       );
       transactionHash = transaction.hash;
 
       logger.info(
-        `[interactSmartContractAction] Contract interaction transaction sent: ${transactionHash}`
+        `[interactSmartContractAction] Contract interaction transaction sent: ${transactionHash}`,
       );
 
       // Wait for the transaction to be mined
       const receipt = await transaction.wait();
 
       if (receipt && receipt.status === 1) {
-        methodUsed = alchemyApiKey ? 'alchemy' : 'rpc';
+        methodUsed = alchemyApiKey ? "alchemy" : "rpc";
 
         logger.info(
-          `[interactSmartContractAction] Contract interaction successful. Gas used: ${receipt.gasUsed.toString()}`
+          `[interactSmartContractAction] Contract interaction successful. Gas used: ${receipt.gasUsed.toString()}`,
         );
       } else {
-        throw new Error('Contract interaction failed - transaction was reverted');
+        throw new Error(
+          "Contract interaction failed - transaction was reverted",
+        );
       }
     } catch (error) {
-      logger.error(`[interactSmartContractAction] Contract interaction failed:`, error);
+      logger.error(
+        `[interactSmartContractAction] Contract interaction failed:`,
+        error,
+      );
       errorMessages.push(
-        `Contract interaction failed: ${error instanceof Error ? error.message : String(error)}`
+        `Contract interaction failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -357,7 +412,10 @@ export const interactSmartContractAction: Action = {
       const successText = `✅ Smart contract interaction successful on Polygon zkEVM!\n\n**Contract Address:** \`${interactionParams.contractAddress}\`\n**Method Called:** \`${interactionParams.methodName}\`\n**Arguments:** \`${JSON.stringify(interactionParams.args)}\`\n**Transaction Hash:** \`${transactionHash}\`\n**Method Used:** ${methodUsed}\n**Network:** Polygon zkEVM\n\nThis was a state-changing transaction that has been sent to the network.`;
 
       if (callback) {
-        await callback({ text: successText, content: { success: true, transactionHash } });
+        await callback({
+          text: successText,
+          content: { success: true, transactionHash },
+        });
       }
 
       return {
@@ -365,12 +423,12 @@ export const interactSmartContractAction: Action = {
         text: successText,
         values: { contractInteractionSucceeded: true, transactionHash },
         data: {
-          actionName: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT',
+          actionName: "POLYGON_ZKEVM_INTERACT_SMART_CONTRACT",
           contractAddress: interactionParams.contractAddress,
           methodName: interactionParams.methodName,
           args: interactionParams.args,
           transactionHash,
-          network: 'polygon-zkevm',
+          network: "polygon-zkevm",
           timestamp: Date.now(),
           method: methodUsed,
           interactionParams: {
@@ -381,18 +439,30 @@ export const interactSmartContractAction: Action = {
       };
     } else {
       // Contract interaction failed
-      const errorMessage = `Failed to interact with smart contract on Polygon zkEVM. Errors: ${errorMessages.join('; ')}. Please check your contract address, ABI, method name, and arguments.`;
+      const errorMessage = `Failed to interact with smart contract on Polygon zkEVM. Errors: ${errorMessages.join("; ")}. Please check your contract address, ABI, method name, and arguments.`;
       logger.error(errorMessage);
 
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
 
       return {
         success: false,
         text: `❌ ${errorMessage}`,
-        values: { contractInteractionSucceeded: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_INTERACT_SMART_CONTRACT', error: errorMessage, errors: errorMessages, interactionParams },
+        values: {
+          contractInteractionSucceeded: false,
+          error: true,
+          errorMessage,
+        },
+        data: {
+          actionName: "POLYGON_ZKEVM_INTERACT_SMART_CONTRACT",
+          error: errorMessage,
+          errors: errorMessages,
+          interactionParams,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -401,31 +471,31 @@ export const interactSmartContractAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
           text: 'Call the "mint" function on contract 0x123... with arguments ["0xabc...", 100] on Polygon zkEVM',
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: '✅ Smart contract interaction successful on Polygon zkEVM! Transaction sent: 0x456... Please wait for confirmation.',
-          action: 'POLYGON_INTERACT_SMART_CONTRACT_ZKEVM',
+          text: "✅ Smart contract interaction successful on Polygon zkEVM! Transaction sent: 0x456... Please wait for confirmation.",
+          action: "POLYGON_INTERACT_SMART_CONTRACT_ZKEVM",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
           text: 'Interact with contract 0xdef... on Polygon zkEVM to call "approve" with args ["0x123...", 50]',
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: '✅ Smart contract interaction successful on Polygon zkEVM! Transaction sent: 0x789... Please wait for confirmation.',
-          action: 'POLYGON_INTERACT_SMART_CONTRACT_ZKEVM',
+          text: "✅ Smart contract interaction successful on Polygon zkEVM! Transaction sent: 0x789... Please wait for confirmation.",
+          action: "POLYGON_INTERACT_SMART_CONTRACT_ZKEVM",
         },
       },
     ],

@@ -5,20 +5,26 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  type State
-} from '@elizaos/core';
-import { JsonRpcProvider } from 'ethers';
-import { blockDetailsByHashTemplate } from '../templates';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+  type State,
+} from "@elizaos/core";
+import { JsonRpcProvider } from "ethers";
+import { blockDetailsByHashTemplate } from "../templates";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 export const getBlockDetailsByHashAction: Action = {
-  name: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH',
-  similes: ['GET_BLOCK_BY_HASH', 'SHOW_BLOCK_DETAILS_BY_HASH'].map((s) => `POLYGON_ZKEVM_${s}`),
-  description: 'Gets block details for a given hash on Polygon zkEVM.',
+  name: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
+  similes: ["GET_BLOCK_BY_HASH", "SHOW_BLOCK_DETAILS_BY_HASH"].map(
+    (s) => `POLYGON_ZKEVM_${s}`,
+  ),
+  description: "Gets block details for a given hash on Polygon zkEVM.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> => {
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
       return false;
@@ -32,30 +38,39 @@ export const getBlockDetailsByHashAction: Action = {
     message: Memory,
     state?: State,
     options?: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    logger.info('[getBlockDetailsByHashAction] Handler called!');
+    logger.info("[getBlockDetailsByHashAction] Handler called!");
 
-    const alchemyApiKey = runtime.getSetting('ALCHEMY_API_KEY');
-    const zkevmRpcUrl = runtime.getSetting('ZKEVM_RPC_URL');
+    const alchemyApiKey = runtime.getSetting("ALCHEMY_API_KEY");
+    const zkevmRpcUrl = runtime.getSetting("ZKEVM_RPC_URL");
 
     if (!alchemyApiKey && !zkevmRpcUrl) {
-      const errorMessage = 'ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.';
-      logger.error(`[getBlockDetailsByHashAction] Configuration error: ${errorMessage}`);
+      const errorMessage =
+        "ALCHEMY_API_KEY or ZKEVM_RPC_URL is required in configuration.";
+      logger.error(
+        `[getBlockDetailsByHashAction] Configuration error: ${errorMessage}`,
+      );
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { blockRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
+          error: errorMessage,
+        },
         error: new Error(errorMessage),
       };
     }
 
     let blockDetails: any | null = null;
-    let methodUsed: 'alchemy' | 'rpc' | null = null;
+    let methodUsed: "alchemy" | "rpc" | null = null;
     let errorMessages: string[] = [];
     let blockHashInput: any | null = null;
 
@@ -65,33 +80,45 @@ export const getBlockDetailsByHashAction: Action = {
         runtime,
         state,
         blockDetailsByHashTemplate,
-        'getBlockDetailsByHashAction'
+        "getBlockDetailsByHashAction",
       );
 
       // Check if the model returned an error field
       if (blockHashInput?.error) {
-        logger.error('[getBlockDetailsByHashAction] LLM returned an error:', blockHashInput?.error);
+        logger.error(
+          "[getBlockDetailsByHashAction] LLM returned an error:",
+          blockHashInput?.error,
+        );
         throw new Error(blockHashInput?.error);
       }
 
       // Validate blockHashInput format (basic check for non-empty string)
-      if (!blockHashInput?.blockHash || typeof blockHashInput.blockHash !== 'string') {
-        throw new Error('Invalid block hash received from LLM.');
+      if (
+        !blockHashInput?.blockHash ||
+        typeof blockHashInput.blockHash !== "string"
+      ) {
+        throw new Error("Invalid block hash received from LLM.");
       }
     } catch (error) {
       logger.debug(
-        '[getBlockDetailsByHashAction] OBJECT_LARGE model failed',
-        error instanceof Error ? error.message : String(error)
+        "[getBlockDetailsByHashAction] OBJECT_LARGE model failed",
+        error instanceof Error ? error.message : String(error),
       );
       const errorMessage = `[getBlockDetailsByHashAction] Failed to extract block hash from input: ${error instanceof Error ? error.message : String(error)}`;
       if (callback) {
-        await callback({ text: errorMessage, content: { success: false, error: errorMessage } });
+        await callback({
+          text: errorMessage,
+          content: { success: false, error: errorMessage },
+        });
       }
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { blockRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH', error: errorMessage },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
+          error: errorMessage,
+        },
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
@@ -100,17 +127,18 @@ export const getBlockDetailsByHashAction: Action = {
     if (alchemyApiKey) {
       try {
         logger.info(
-          `[getBlockDetailsByHashAction] Attempting to use Alchemy API for block hash ${blockHashInput.blockHash}`
+          `[getBlockDetailsByHashAction] Attempting to use Alchemy API for block hash ${blockHashInput.blockHash}`,
         );
         const zkevmAlchemyUrl =
-          runtime.getSetting('ZKEVM_ALCHEMY_URL') || 'https://polygonzkevm-mainnet.g.alchemy.com/v2';
+          runtime.getSetting("ZKEVM_ALCHEMY_URL") ||
+          "https://polygonzkevm-mainnet.g.alchemy.com/v2";
         const alchemyUrl = `${zkevmAlchemyUrl}/${alchemyApiKey}`;
         const options = {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'eth_getBlockByHash',
+            jsonrpc: "2.0",
+            method: "eth_getBlockByHash",
             params: [blockHashInput.blockHash, true], // true for full transaction details
             id: 1,
           }),
@@ -118,29 +146,39 @@ export const getBlockDetailsByHashAction: Action = {
 
         const response = await fetch(alchemyUrl, options);
         if (!response.ok) {
-          throw new Error(`Alchemy API returned status ${response.status}: ${response.statusText}`);
+          throw new Error(
+            `Alchemy API returned status ${response.status}: ${response.statusText}`,
+          );
         }
-        const data = (await response.json()) as { error?: { message: string }; result?: any };
+        const data = (await response.json()) as {
+          error?: { message: string };
+          result?: any;
+        };
 
         if (data?.error) {
-          throw new Error(`Alchemy API returned error: ${data?.error?.message}`);
+          throw new Error(
+            `Alchemy API returned error: ${data?.error?.message}`,
+          );
         }
 
         if (data?.result) {
           blockDetails = data?.result;
-          methodUsed = 'alchemy';
+          methodUsed = "alchemy";
           logger.info(
-            `[getBlockDetailsByHashAction] Block details from Alchemy for block hash ${blockHashInput.blockHash}`
+            `[getBlockDetailsByHashAction] Block details from Alchemy for block hash ${blockHashInput.blockHash}`,
           );
         } else {
           logger.warn(
-            `[getBlockDetailsByHashAction] Alchemy API returned no result for block hash ${blockHashInput.blockHash}.`
+            `[getBlockDetailsByHashAction] Alchemy API returned no result for block hash ${blockHashInput.blockHash}.`,
           );
         }
       } catch (error) {
-        logger.error(`Error using Alchemy API for block hash ${blockHashInput.blockHash}:`, error);
+        logger.error(
+          `Error using Alchemy API for block hash ${blockHashInput.blockHash}:`,
+          error,
+        );
         errorMessages.push(
-          `Alchemy API failed: ${error instanceof Error ? error.message : String(error)}`
+          `Alchemy API failed: ${error instanceof Error ? error.message : String(error)}`,
         );
         // Continue to fallback
       }
@@ -149,31 +187,33 @@ export const getBlockDetailsByHashAction: Action = {
     // 2. Fallback to JSON-RPC if Alchemy failed or not configured
     if (blockDetails === null && zkevmRpcUrl) {
       logger.info(
-        `[getBlockDetailsByHashAction] Falling back to JSON-RPC for block hash ${blockHashInput.blockHash}`
+        `[getBlockDetailsByHashAction] Falling back to JSON-RPC for block hash ${blockHashInput.blockHash}`,
       );
       try {
         const provider = new JsonRpcProvider(zkevmRpcUrl);
         const block = await provider.getBlock(blockHashInput.blockHash, true);
 
         if (block) {
-          const maybeJson = (block as unknown as { toJSON?: () => unknown }).toJSON;
-          blockDetails = typeof maybeJson === 'function' ? maybeJson.call(block) : block;
-          methodUsed = 'rpc';
+          const maybeJson = (block as unknown as { toJSON?: () => unknown })
+            .toJSON;
+          blockDetails =
+            typeof maybeJson === "function" ? maybeJson.call(block) : block;
+          methodUsed = "rpc";
           logger.info(
-            `[getBlockDetailsByHashAction] Block details from RPC for block hash ${blockHashInput.blockHash}`
+            `[getBlockDetailsByHashAction] Block details from RPC for block hash ${blockHashInput.blockHash}`,
           );
         } else {
           logger.warn(
-            `[getBlockDetailsByHashAction] RPC returned no block for hash ${blockHashInput.blockHash}.`
+            `[getBlockDetailsByHashAction] RPC returned no block for hash ${blockHashInput.blockHash}.`,
           );
         }
       } catch (error) {
         logger.error(
           `Error using JSON-RPC fallback for block hash ${blockHashInput.blockHash}:`,
-          error
+          error,
         );
         errorMessages.push(
-          `JSON-RPC fallback failed: ${error instanceof Error ? error.message : String(error)}`
+          `JSON-RPC fallback failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -189,7 +229,10 @@ export const getBlockDetailsByHashAction: Action = {
       const successText = `Here are the details for Polygon zkEVM block ${blockHashInput.blockHash} (via ${methodUsed}):\n\n\`\`\`json\n${JSON.stringify(blockDetails, null, 2)}\n\`\`\`\nZK-specific fields: ${JSON.stringify(zkevmFields, null, 2)}`;
 
       if (callback) {
-        await callback({ text: successText, content: { success: true, blockHash: blockHashInput.blockHash } });
+        await callback({
+          text: successText,
+          content: { success: true, blockHash: blockHashInput.blockHash },
+        });
       }
 
       return {
@@ -197,28 +240,36 @@ export const getBlockDetailsByHashAction: Action = {
         text: successText,
         values: { blockRetrieved: true, blockHash: blockHashInput.blockHash },
         data: {
-          actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH',
+          actionName: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
           block: blockDetails,
           zkevmFields: zkevmFields,
-          network: 'polygon-zkevm',
+          network: "polygon-zkevm",
           timestamp: Date.now(),
           method: methodUsed,
         },
       };
     } else {
       // Both methods failed or block not found
-      const errorMessage = `Failed to retrieve details for Polygon zkEVM block hash ${blockHashInput.blockHash} using both Alchemy and RPC. Errors: ${errorMessages.join('; ')}. It's possible the block hash is invalid or the block does not exist yet.`;
+      const errorMessage = `Failed to retrieve details for Polygon zkEVM block hash ${blockHashInput.blockHash} using both Alchemy and RPC. Errors: ${errorMessages.join("; ")}. It's possible the block hash is invalid or the block does not exist yet.`;
       logger.error(errorMessage);
 
       if (callback) {
-        await callback({ text: `❌ ${errorMessage}`, content: { success: false, error: errorMessage } });
+        await callback({
+          text: `❌ ${errorMessage}`,
+          content: { success: false, error: errorMessage },
+        });
       }
 
       return {
         success: false,
         text: `❌ ${errorMessage}`,
         values: { blockRetrieved: false, error: true, errorMessage },
-        data: { actionName: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH', error: errorMessage, errors: errorMessages, blockHash: blockHashInput.blockHash },
+        data: {
+          actionName: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
+          error: errorMessage,
+          errors: errorMessages,
+          blockHash: blockHashInput.blockHash,
+        },
         error: new Error(errorMessage),
       };
     }
@@ -226,31 +277,31 @@ export const getBlockDetailsByHashAction: Action = {
   examples: [
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'get polygon zkevm block details for hash 0xd5f1812548be429cbdc6376b29611fc49e06f1359758c4ceaaa3b393e2239f9c',
+          text: "get polygon zkevm block details for hash 0xd5f1812548be429cbdc6376b29611fc49e06f1359758c4ceaaa3b393e2239f9c",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: 'Here are the details for Polygon zkEVM block 0xd5f1812548be429cbdc6376b29611fc49e06f1359758c4ceaaa3b393e2239f9c (via alchemy):\n```json\n{\n  "number": 12345,\n  "hash": "0xd5f1812548be429cbdc6376b29611fc49e06f1359758c4ceaaa3b393e2239f9c",\n  "parentHash": "0x...",\n  "timestamp": 1234567890,\n  "transactions": []\n}\n```\nZK-specific fields: {\n  "zkProverVersion": "1.0.0",\n  "batchIndex": 123\n}',
-          action: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH',
+          action: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'show block details for hash 0xabcdef... on Polygon zkEVM',
+          text: "show block details for hash 0xabcdef... on Polygon zkEVM",
         },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
           text: 'Here are the details for Polygon zkEVM block 0xabcdef... (via rpc):\n```json\n{\n  "number": 12346,\n  "hash": "0xabcdef...",\n  "parentHash": "0x...",\n  "timestamp": 1234567891,\n  "transactions": []\n}\n```\nZK-specific fields: {\n  "zkProverVersion": "1.0.0",\n  "batchIndex": 124\n}',
-          action: 'POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH',
+          action: "POLYGON_ZKEVM_GET_BLOCK_DETAILS_BY_HASH",
         },
       },
     ],
